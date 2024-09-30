@@ -23,6 +23,7 @@ fn main() -> Result<(), String> {
     let window = video_subsystem
         .window("Adroitly.io", 1500, 1200)
         .position_centered()
+        .resizable()
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
