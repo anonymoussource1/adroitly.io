@@ -1,5 +1,6 @@
 use sdl2::render::Canvas;
 use sdl2::video::Window;
+use std::time::Duration;
 
 pub const RADIUS: u32 = 10;
 
@@ -11,10 +12,10 @@ pub struct Bullet {
 }
 
 impl Bullet {
-    pub fn new(x: i32, y: i32, dx: f64, dy: f64) -> Self {
+    pub fn new(x: f64, y: f64, dx: f64, dy: f64) -> Self {
         Self {
-            x: x as f64,
-            y: y as f64,
+            x,
+            y,
             dx,
             dy
         }
@@ -26,9 +27,10 @@ impl Bullet {
         Ok(())
     }
 
-    pub fn update(&mut self) {
-        self.x += self.dx * 5.0;
-        self.y += self.dy * 5.0;
+    pub fn update(&mut self, &delta_time: &Duration) {
+        let delta_time = delta_time.as_millis() as f64 / 1000.0;
+        self.x += self.dx * 300.0 * delta_time;
+        self.y += self.dy * 300.0 * delta_time;
     }
 }
 

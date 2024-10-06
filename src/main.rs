@@ -69,13 +69,12 @@ fn main() -> Result<(), String> {
         }
 
         if mouse.is_mouse_button_pressed(MouseButton::Left) && shoot_cooldown == Duration::from_secs(0) {
-            let new_x = (mouse.x() - heli.x + helicopter::SIZE as i32 / 2) as f64;
-            let new_y = (mouse.y() - heli.y + helicopter::SIZE as i32 / 2) as f64;
+            let new_x = mouse.x() as f64 - heli.x - helicopter::SIZE as f64 / 2.0;
+            let new_y = mouse.y() as f64 - heli.y - helicopter::SIZE as f64 / 2.0;
 
-            println!("{} {}", new_x, new_y);
             bullets.push(Bullet::new(
-                heli.x + helicopter::SIZE as i32 / 2,
-                heli.y + helicopter::SIZE as i32 / 2,
+                heli.x + helicopter::SIZE as f64 / 2.0,
+                heli.y + helicopter::SIZE as f64 / 2.0,
                 new_x / (new_x.powi(2) + new_y.powi(2)).sqrt(),
                 new_y / (new_x.powi(2) + new_y.powi(2)).sqrt(),
             ));
@@ -91,9 +90,10 @@ fn main() -> Result<(), String> {
             shoot_cooldown = Duration::from_secs(0);
         }
 
-        heli.update(&keyboard);
+        heli.update(&delta_time, &keyboard);
+
         for bullet in bullets.iter_mut() {
-            bullet.update();
+            bullet.update(&delta_time);
         }
 
         // END OF PHYSICS
