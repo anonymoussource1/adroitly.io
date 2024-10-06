@@ -49,7 +49,7 @@ impl Network {
         let mut peers = self.peers.lock().expect("Failed to acuire lock on network");
         peers.insert(ip.clone(), peer.try_clone().expect("Failed to clone peer"));
 
-        let heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0, ip.clone())));
+        let heli = Arc::new(Mutex::new(Helicopter::new(0, 0, ip.clone())));
         self.helis.insert(ip, heli.clone());
 
         print!("DEBUG INFO:");
