@@ -9,15 +9,17 @@ pub struct Bullet {
     y: f64,
     dx: f64,
     dy: f64,
+    owner: String,
 }
 
 impl Bullet {
-    pub fn new(x: f64, y: f64, dx: f64, dy: f64) -> Self {
+    pub fn new(x: f64, y: f64, dx: f64, dy: f64, owner: &str) -> Self {
         Self {
             x,
             y,
             dx,
-            dy
+            dy,
+            owner: owner.to_string(),
         }
     }
 

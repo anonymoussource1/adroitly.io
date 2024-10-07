@@ -72,12 +72,13 @@ fn main() -> Result<(), String> {
             let new_x = mouse.x() as f64 - heli.x - helicopter::SIZE as f64 / 2.0;
             let new_y = mouse.y() as f64 - heli.y - helicopter::SIZE as f64 / 2.0;
 
-            bullets.push(Bullet::new(
+            let bullet = Bullet::new(
                 heli.x + helicopter::SIZE as f64 / 2.0,
                 heli.y + helicopter::SIZE as f64 / 2.0,
                 new_x / (new_x.powi(2) + new_y.powi(2)).sqrt(),
                 new_y / (new_x.powi(2) + new_y.powi(2)).sqrt(),
-            ));
+                &network.lock().expect("Failed to acquire lock on network").ip,
+            );
 
             shoot_cooldown = Duration::from_millis(250);
         }
@@ -109,18 +110,26 @@ fn main() -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(225, 100, 100));
         heli.draw(&mut canvas)?;
 
+        canvas.set_draw_color(Color::RGB(100, 100, 225));
         for heli in network.helis.values() {
-            canvas.set_draw_color(Color::RGB(100, 100, 225));
             heli.lock()
                 .expect("Failed to acquire lock on helicopter")
                 .draw(&mut canvas)?;
         }
 
         for bullet in &bullets {
+            if bullet.owner == network.lock().expect("Failed to acquire on network").ip {
+                canvas.set_draw_color(Color::RGB(255, 100, 100));
+            } else {
+                canvas.set_draw_color(Color::RGB(100, 100, 255));
+            }
+
             bullet.draw(&mut canvas)?;
         }
 
         canvas.present();
+
+        // END OF DRAWING
 
         last_time_stamp = get_current_time();
         if last_time_stamp - start <= Duration::from_millis(1000 / 60) {
