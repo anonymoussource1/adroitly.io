@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::helicopter::Helicopter;
+use crate::bullet::Bullet;
 
 pub struct Network {
     peers: Arc<Mutex<HashMap<String, TcpStream>>>,
@@ -17,8 +18,18 @@ impl Network {
     pub fn new(ip: &str) -> Self {
         Network {
             peers: Arc::new(Mutex::new(HashMap::new())),
+            //bullets: HashMap::new(),
             helis: HashMap::new(),
             ip: ip.to_string(),
+        }
+    }
+
+    pub fn send_bullet(&mut self, bullet: &Bullet) {
+        let mut peers = self.peers.lock().expect("Failed to acquire lock on peers");
+        
+        for (_, peer) in peers.iter_mut() {
+            peer.write_all(format!("BULLET {} {} {} {} {}", bullet.owner, bullet.x, bullet.y, bullet.dx, bullet.dy).as_bytes())
+                .expect("Failed to write to peer");
         }
     }
 
@@ -38,8 +49,8 @@ impl Network {
 
     pub fn send_pos(&mut self, heli: &Helicopter) {
         let mut peers = self.peers.lock().expect("Failed to acquire lock on peers");
-        for (_, player) in peers.iter_mut() {
-            player
+        for (_, peer) in peers.iter_mut() {
+            peer
                 .write_all(format!("POS {} {}", heli.x, heli.y).as_bytes())
                 .expect("Failed to write to player");
         }
@@ -122,7 +133,7 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
     println!("CLOSED LISTENING");
 }
 
-pub fn handle_peer(mut peer: TcpStream, heli: Arc<Mutex<Helicopter>>) {
+pub fn handle_peer(mut peer: TcpStream, heli: Arc<Mutex<Helicopter>>, /*bullets: Arc<Mutex<Bullet>>*/) {
     loop {
         let mut buffer = [0; 1024];
         //println!("STARTED READING PEER");
@@ -134,8 +145,9 @@ pub fn handle_peer(mut peer: TcpStream, heli: Arc<Mutex<Helicopter>>) {
             Ok(bytes_read) => {
                 let raw_message = String::from_utf8_lossy(&buffer[..bytes_read]).to_string();
 
-                let heli_clone = heli.clone();
-                thread::spawn(move || handle_peer_message(raw_message, heli_clone));
+                //let bullets = bullets.clone();
+                let heli = heli.clone();
+                thread::spawn(move || handle_peer_message(raw_message, heli));
             }
             Err(e) => {
                 eprintln!("{}", e);
@@ -145,15 +157,11 @@ pub fn handle_peer(mut peer: TcpStream, heli: Arc<Mutex<Helicopter>>) {
     }
 }
 
-fn handle_peer_message(message: String, heli: Arc<Mutex<Helicopter>>) {
+fn handle_peer_message(message: String, heli: Arc<Mutex<Helicopter>>/*, bullets: Arc<Mutex<Bullet>>*/) {
     let message_parts: Vec<&str> = message.split(" ").collect();
 
     match message_parts[0] {
         "POS" => {
-            /*println!(
-                "  RECIEVED POS COMMAND: {} {}",
-                message_parts[1], message_parts[2]
-            );*/
             let mut heli = heli.lock().expect("Failed to acquire lock on heli");
             heli.x = message_parts[1].parse().expect("Invalid format");
             heli.y = match message_parts[2].parse() {
@@ -163,6 +171,14 @@ fn handle_peer_message(message: String, heli: Arc<Mutex<Helicopter>>) {
                     heli.y
                 }
             };
+        }
+        "BULLET" => {
+            let x: f64 = message_parts[2].parse().expect("Invalid format");
+            let y: f64 = message_parts[3].parse().expect("Invalid format");
+            let dx: f64 = message_parts[4].parse().expect("Invalid format");
+            let dy: f64 = message_parts[5].parse().expect("Invalid format");
+            
+            //bullets.push(Bullet::new(message_part[1].to_string(), x, y, dx, dy));
         }
         _ => {
             eprintln!("Not a command!");

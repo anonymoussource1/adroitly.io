@@ -2,8 +2,8 @@ use sdl2;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
-use sdl2::pixels::Color;
 use sdl2::mouse::MouseState;
+use sdl2::pixels::Color;
 use sdl2::EventPump;
 
 use std::io::{self, Read, Write};
@@ -58,6 +58,7 @@ fn main() -> Result<(), String> {
 
     'main: loop {
         let start = get_current_time();
+        let mut network = network.lock().expect("Failed to acquire lock on network");
         let delta_time = start - last_time_stamp;
 
         get_input(&mut event_pump, &mut keyboard);
@@ -72,12 +73,17 @@ fn main() -> Result<(), String> {
             let new_x = mouse.x() as f64 - heli.x - helicopter::SIZE as f64 / 2.0;
             let new_y = mouse.y() as f64 - heli.y - helicopter::SIZE as f64 / 2.0;
 
-            bullets.push(Bullet::new(
+            let bullet = Bullet::new(
+                network.ip.to_string(),
                 heli.x + helicopter::SIZE as f64 / 2.0,
                 heli.y + helicopter::SIZE as f64 / 2.0,
                 new_x / (new_x.powi(2) + new_y.powi(2)).sqrt(),
                 new_y / (new_x.powi(2) + new_y.powi(2)).sqrt(),
-            ));
+            );
+            
+            network.send_bullet(&bullet);
+
+            bullets.push(bullet);
 
             shoot_cooldown = Duration::from_millis(250);
         }
@@ -98,7 +104,6 @@ fn main() -> Result<(), String> {
 
         // END OF PHYSICS
 
-        let mut network = network.lock().expect("Failed to acquire lock on network");
         network.send_pos(&heli);
 
         // END OF NETWORK
