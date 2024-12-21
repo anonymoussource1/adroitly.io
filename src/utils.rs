@@ -1,4 +1,4 @@
-use std::time::{ SystemTime, UNIX_EPOCH, Duration };
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub struct Keyboard {
     pub is_w_down: bool,
@@ -21,5 +21,7 @@ impl Keyboard {
 }
 
 pub fn get_current_time() -> Duration {
-    SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards")
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
 }

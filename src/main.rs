@@ -40,7 +40,6 @@ fn main() -> Result<(), String> {
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
     let mut keyboard = Keyboard::new();
     let network = prompt_for_network();
-    let mut bullets = Vec::new();
     let mut shoot_cooldown = Duration::from_secs(0);
     let mut last_time_stamp = Duration::from_secs(0);
     let mut heli = Helicopter::new(
@@ -69,23 +68,35 @@ fn main() -> Result<(), String> {
             break 'main;
         }
 
-        if mouse.is_mouse_button_pressed(MouseButton::Left) && shoot_cooldown == Duration::from_secs(0) {
+        if mouse.is_mouse_button_pressed(MouseButton::Left)
+            && shoot_cooldown == Duration::from_secs(0)
+        {
             let new_x = mouse.x() as f64 - heli.x - helicopter::SIZE as f64 / 2.0;
             let new_y = mouse.y() as f64 - heli.y - helicopter::SIZE as f64 / 2.0;
 
             let bullet = Bullet::new(
-                network.ip.to_string(),
                 heli.x + helicopter::SIZE as f64 / 2.0,
                 heli.y + helicopter::SIZE as f64 / 2.0,
                 new_x / (new_x.powi(2) + new_y.powi(2)).sqrt(),
                 new_y / (new_x.powi(2) + new_y.powi(2)).sqrt(),
             );
-            
+
             network.send_bullet(&bullet);
 
-            bullets.push(bullet);
+            let ip = network.ip.clone();
+            if let Some(specific_bullets) = network.bullets.get_mut(&ip) {
+                specific_bullets.lock().expect("Failed to acquire lock on specific_bullets").push(bullet);
+            } else {
+                let specific_bullets = Arc::new(Mutex::new(Vec::new()));
+
+                specific_bullets.lock().expect("Failed to acquire lock on specific_bullets").push(bullet);
+
+                network.bullets.insert(ip, specific_bullets);
+            }
 
             shoot_cooldown = Duration::from_millis(250);
+
+            println!("{:?}", network.bullets);
         }
 
         // END OF INPUT
@@ -98,8 +109,14 @@ fn main() -> Result<(), String> {
 
         heli.update(&delta_time, &keyboard);
 
-        for bullet in bullets.iter_mut() {
-            bullet.update(&delta_time);
+        for bullets in network.bullets.values() {
+            for bullet in bullets
+                .lock()
+                .expect("Failed to acquire lock on bullets")
+                .iter_mut()
+            {
+                bullet.update(&delta_time);
+            }
         }
 
         // END OF PHYSICS
@@ -121,8 +138,20 @@ fn main() -> Result<(), String> {
                 .draw(&mut canvas)?;
         }
 
-        for bullet in &bullets {
-            bullet.draw(&mut canvas)?;
+        for (ip, bullets) in network.bullets.iter() {
+            if ip == &network.ip {
+                canvas.set_draw_color(Color::RGB(225, 100, 100));
+            } else {
+                canvas.set_draw_color(Color::RGB(100, 100, 225));
+            }
+
+            for bullet in bullets
+                .lock()
+                .expect("Failed to acquire lock on bullets")
+                .iter()
+            {
+                bullet.draw(&mut canvas)?;
+            }
         }
 
         canvas.present();
@@ -261,6 +290,7 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
                     }
                 }
                 "CURRPLAYERS" => println!("  RECIEVED EMPTY CURRPLAYERS COMMAND"),
+                "CURRBULLETS" => println!("----RECIEVED CURRBULLETS [UNIMPLEMENTED]----"),
                 command => {
                     panic!("Invalid command {}", command);
                 }

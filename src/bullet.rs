@@ -4,8 +4,8 @@ use std::time::Duration;
 
 pub const RADIUS: u32 = 10;
 
+#[derive(Debug)]
 pub struct Bullet {
-    pub owner: String,
     pub x: f64,
     pub y: f64,
     pub dx: f64,
@@ -13,14 +13,8 @@ pub struct Bullet {
 }
 
 impl Bullet {
-    pub fn new(owner: String, x: f64, y: f64, dx: f64, dy: f64) -> Self {
-        Self {
-            owner,
-            x,
-            y,
-            dx,
-            dy
-        }
+    pub fn new(x: f64, y: f64, dx: f64, dy: f64) -> Self {
+        Self { x, y, dx, dy }
     }
 
     pub fn draw(&self, canvas: &mut Canvas<Window>) -> Result<(), String> {

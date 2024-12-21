@@ -40,12 +40,7 @@ impl Helicopter {
     }
 
     pub fn draw(&self, canvas: &mut Canvas<Window>) -> Result<(), String> {
-        canvas.fill_rect(Rect::new(
-            self.x as i32,
-            self.y as i32,
-            SIZE,
-            SIZE,
-        ))?;
+        canvas.fill_rect(Rect::new(self.x as i32, self.y as i32, SIZE, SIZE))?;
 
         Ok(())
     }
