@@ -1,0 +1,17 @@
+Initialization:
+	JOIN [ip] -> friend
+		CURRPLAYERS [ip...]
+	NEWPEER [ip] -> players
+
+Gameplay:
+	POS [x] [y] -> players
+	BULLET [x] [y] [dx] [dy]
+
+Initialization:
+	JOIN:
+		[type/len]([ip address][port])...
+		  2bi/6bi       4b       2b
+
+Gameplay:
+	[type][x][y]type?([dx][dy])
+	  1b  8b 8b        8b  8b

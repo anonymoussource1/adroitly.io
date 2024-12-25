@@ -15,12 +15,14 @@ use std::time::Duration;
 mod bullet;
 mod helicopter;
 mod network;
+mod serializer;
 mod utils;
 
 use bullet::Bullet;
 use helicopter::Helicopter;
 use network::Network;
 use utils::{get_current_time, Keyboard};
+use serializer::*;
 
 fn main() -> Result<(), String> {
     let sdl2_context = sdl2::init()?;
@@ -95,8 +97,6 @@ fn main() -> Result<(), String> {
             }
 
             shoot_cooldown = Duration::from_millis(250);
-
-            println!("{:?}", network.bullets);
         }
 
         // END OF INPUT
@@ -229,7 +229,10 @@ fn prompt_for_network() -> Arc<Mutex<Network>> {
 }
 
 fn create_game() -> Arc<Mutex<Network>> {
-    let network = Arc::new(Mutex::new(Network::new(&get_player_ip())));
+    let ip = get_player_ip();
+    let network = Arc::new(Mutex::new(Network::new(&ip)));
+
+    println!("{}", deserialize_ip(serialize_ip(&ip)));
 
     let network_clone = network.clone();
     thread::spawn(move || network::start_listening_for_connection(network_clone));

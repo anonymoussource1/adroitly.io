@@ -140,7 +140,6 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 
                         network.add_and_listen(message[1].to_string(), stream);
                     }
-                    "CONNECT" => println!("  RECIEVED CONNECT COMMAND"),
                     _ => {
                         eprintln!(" Not a command!");
                         eprintln!(
