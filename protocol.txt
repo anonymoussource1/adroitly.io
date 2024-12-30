@@ -1,17 +1,23 @@
 Initialization:
-	JOIN [ip] -> friend
+	JOIN [is first] [ip]
 		CURRPLAYERS [ip...]
-	NEWPEER [ip] -> players
 
 Gameplay:
-	POS [x] [y] -> players
+	POS [x] [y]
 	BULLET [x] [y] [dx] [dy]
 
 Initialization:
-	JOIN:
+	JOIN
+		[type/is_first][ip address][port]
+		    2bi/1bi         4b       2b
+	CURRPLAYERS
 		[type/len]([ip address][port])...
-		  2bi/6bi       4b       2b
+		  2bi/6bi      4b        2b 
 
 Gameplay:
-	[type][x][y]type?([dx][dy])
-	  1b  8b 8b        8b  8b
+	POS
+		[type][x][y]
+		 2bi/x 8b 8b
+	BULLET
+		[type][x][y][dx][dy]
+		 2bi/x 8b 8b 8b  8b

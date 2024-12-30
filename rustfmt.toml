@@ -1,0 +1,17 @@
+max_width = 200
+combine_control_expr = false
+condense_wildcard_suffixes = true
+force_multiline_blocks = true
+hard_tabs = true
+hex_literal_case = "Upper"
+imports_layout = "Vertical"
+imports_granularity = "Module"
+overflow_delimited_expr = true
+reorder_impl_items = true
+group_imports = "StdExternalCrate"
+struct_lit_single_line = false
+trailing_comma = "Never"
+trailing_semicolon = false
+use_field_init_shorthand = true
+where_single_line = true
+wrap_comments = true
