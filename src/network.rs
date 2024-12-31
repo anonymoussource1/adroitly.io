@@ -35,8 +35,9 @@ impl Network {
 	}
 
 	pub fn send_bullet(&mut self, bullet: &Bullet) {
+        let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy);
 		for (_, peer) in self.peers.iter_mut() {
-			peer.write_all(format!("BULLET {} {} {} {}", bullet.x, bullet.y, bullet.dx, bullet.dy).as_bytes())
+			peer.write_all(&bullet.serialize())
 				.expect("Failed to write to peer");
 		}
 	}
@@ -45,7 +46,7 @@ impl Network {
 		let mut message = String::from("CURRBULLETS");
 
 		for (ip, bullets) in &self.bullets {
-			let bullets = bullets.lock().expect(&format!("Faield to acquire lock on {}'s bullets", ip));
+			let bullets = bullets.lock().expect(&format!("Failed to acquire lock on {}'s bullets", ip));
 			message.push_str(&format!(" {} {}", ip, bullets.len()));
 			for bullet in bullets.iter() {
 				message.push_str(&format!(" {} {} {} {}", bullet.x, bullet.y, bullet.dx, bullet.dy));
@@ -72,8 +73,9 @@ impl Network {
 	}
 
 	pub fn send_pos(&mut self, heli: &Helicopter) {
+        let pos = Message::Pos(heli.x, heli.y);
 		for (_, peer) in self.peers.iter_mut() {
-			peer.write_all(format!("POS {} {}", heli.x, heli.y).as_bytes()).expect("Failed to write to player");
+			peer.write_all(&pos.serialize()).expect("Failed to write to player");
 		}
 	}
 
@@ -108,13 +110,14 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 				break;
 			}
 			Ok(bytes_read) => {
+                println!("DESERIALIZE 112 REPORTING, SIR");
 				let message = Message::deserialize(&buffer[..bytes_read]);
 
 				println!("RECIEVED \"{}\"", message);
 				match message {
 					Message::Join(is_first, ip) => {
 						let mut network = network.lock().expect("Failed to acquire lock on network");
-                        println!("Acquire network lock");
+						println!("Acquire network lock");
 
 						if is_first {
 							network.send_curr_peers(&ip, &mut stream);
@@ -146,11 +149,17 @@ pub fn handle_peer(mut peer: TcpStream, heli: Arc<Mutex<Helicopter>>, bullets: A
 				break;
 			}
 			Ok(bytes_read) => {
-                let message = Message::deserialize(&buffer[..bytes_read]);
+				let mut start = 0;
+				while start < bytes_read {
+                    let message = Message::deserialize(&buffer[start..bytes_read]);
+                    println!("RECIEVED \"{}\"", message);
 
-				let bullets = bullets.clone();
-				let heli = heli.clone();
-				thread::spawn(move || handle_peer_message(message, heli, bullets));
+					start += message.len() as usize;
+
+					let bullets = bullets.clone();
+					let heli = heli.clone();
+					thread::spawn(move || handle_peer_message(message, heli, bullets));
+				}
 			}
 			Err(e) => {
 				eprintln!("{}", e);
@@ -167,23 +176,7 @@ fn handle_peer_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets: 
 			heli.x = x;
 			heli.y = y;
 		}
-		"BULLET" => {
-			let x: f64 = message_parts[1].parse().expect("Invalid format");
-			let y: f64 = message_parts[2].parse().expect("Invalid format");
-			let dx: f64 = message_parts[3].parse().expect("Invalid format");
-			let dy: f64 = match message_parts[4].parse() {
-				Ok(num) => num,
-				Err(_) => {
-					eprintln!("DOUBLE MESSAGE");
-					0.0
-				}
-			};
-
-			bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy));
-		}
-		_ => {
-			eprintln!("Not a command!");
-			eprintln!("Message was: {}", message);
-		}
+		Message::Bullet(x, y, dx, dy) => bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy)),
+		_ => panic!("THIS DEFINETELY SHOULDN'T BE HAPPNEING!!!!!"),
 	}
 }

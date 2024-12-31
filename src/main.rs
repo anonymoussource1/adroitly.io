@@ -104,6 +104,7 @@ fn main() -> Result<(), String> {
 			shoot_cooldown = Duration::from_secs(0);
 		}
 
+        let old_pos = (heli.x, heli.y);
 		heli.update(&delta_time, &keyboard);
 
 		for bullets in network.bullets.values() {
@@ -114,7 +115,9 @@ fn main() -> Result<(), String> {
 
 		// END OF PHYSICS
 
-		network.send_pos(&heli);
+        if old_pos != (heli.x, heli.y) {
+            network.send_pos(&heli);
+        }
 
 		// END OF NETWORK
 
@@ -241,6 +244,7 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 			panic!("ThIS sHOuLd NoT bE HaPPeNIng");
 		}
 		Ok(bytes_read) => {
+            println!("DESERIALIZE LINE 245 LETS GOOOO");
 			let message = Message::deserialize(&buffer[..bytes_read]);
 
 			println!("  RECIEVED \"{}\"", message);
@@ -256,20 +260,19 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 
 						network.add_and_listen(ip, peer);
 					}
-					
-                    network.add_and_listen(response, peer);
+
+					network.add_and_listen(response, peer);
 				}
-				_ => unreachable!(),
+				_ => unreachable!()
 			}
 
-            let network = network.clone();
-            thread::spawn(move || network::start_listening_for_connection(network));
+			let network = network.clone();
+			thread::spawn(move || network::start_listening_for_connection(network));
 		}
 		Err(e) => {
 			eprintln!("{e}");
 		}
 	}
-
 
 	network
 }

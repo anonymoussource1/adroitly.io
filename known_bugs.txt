@@ -1,0 +1,2 @@
+1. Game stalling trying to acquire lock on network on join
+2. Sometimes connection gets refused on join request

@@ -25,24 +25,24 @@ impl Message {
 
 				currplayers
 			}
-            Self::Pos(x, y) => {
-                let mut pos = vec![0b10000000];
+			Self::Pos(x, y) => {
+				let mut pos = vec![0b10000000];
 
-                pos.append(x.to_be_bytes());
-                pos.append(y.to_be_bytes());
+				pos.append(&mut Vec::from(x.to_be_bytes()));
+				pos.append(&mut Vec::from(y.to_be_bytes()));
 
-                pos
-            }
-            Self::Bullet(x, y, dx, dy) => {
-                let mut bullet = vec![0b11000000];
+				pos
+			}
+			Self::Bullet(x, y, dx, dy) => {
+				let mut bullet = vec![0b11000000];
 
-                bullet.append(x.to_be_bytes());
-                bullet.append(y.to_be_bytes());
-                bullet.append(dx.to_be_bytes());
-                bullet.append(dy.to_be_bytes());
+				bullet.append(&mut Vec::from(x.to_be_bytes()));
+				bullet.append(&mut Vec::from(y.to_be_bytes()));
+				bullet.append(&mut Vec::from(dx.to_be_bytes()));
+				bullet.append(&mut Vec::from(dy.to_be_bytes()));
 
-                bullet
-            }
+				bullet
+			}
 		}
 	}
 
@@ -55,27 +55,41 @@ impl Message {
 				Self::Join(is_first, ip)
 			}
 			1 => {
+                print!("DESERIALIZING CURRPLAYERS");
 				let len = bytes[0] & 0b00111111;
-				let mut ips = Vec::new();
+				let mut ips = Vec::with_capacity(len as usize);
 
 				for i in 0..len {
+                    // 1..7
 					ips.push(deserialize_ip(&bytes[((1 + 6 * i) as usize)..(1 + 6 * (i + 1) as usize)]));
 				}
 
 				Self::CurrPlayers(ips)
 			}
-            2 => {
-                let x = f64::from_be_bytes(&bytes[1..=8].try_into().expect("Slice is incorrect length"));
-                let y = f64::from_be_bytes(&bytes[9..=16].try_into().expect("Slice is incorrect length"));
-                
-                Self::Pos(x, y)
-            }
-            3 => {
-                let x = f64::from_be_bytes(&bytes[1..=8].try_into().expect("Slice is incorrect length"));
-                let y = f64::from_be_bytes(&bytes[9..=16].try_into().expect("Slice is incorrect length"));
-                let dx = f64::from_be_bytes(&bytes[17..=24].try_into().expect("Slice is incorrect length"));
-                let dy = f64::from_be_bytes(&bytes[25..=32].try_into().expect("Slice is incorrect length"));
+			2 => {
+				let x = f64::from_be_bytes(bytes[1..=8].try_into().expect("Slice is incorrect length"));
+				let y = f64::from_be_bytes(bytes[9..=16].try_into().expect("Slice is incorrect length"));
+
+				Self::Pos(x, y)
+			}
+			3 => {
+				let x = f64::from_be_bytes(bytes[1..=8].try_into().expect("Slice is incorrect length"));
+				let y = f64::from_be_bytes(bytes[9..=16].try_into().expect("Slice is incorrect length"));
+				let dx = f64::from_be_bytes(bytes[17..=24].try_into().expect("Slice is incorrect length"));
+				let dy = f64::from_be_bytes(bytes[25..=32].try_into().expect("Slice is incorrect length"));
+
+				Self::Bullet(x, y, dx, dy)
+			}
 			_ => unreachable!()
+		}
+	}
+
+	pub fn len(&self) -> u8 {
+		match self {
+			Self::Join(..) => 7,
+			Self::CurrPlayers(ips) => 1 + 6 * ips.len() as u8,
+			Self::Pos(..) => 17,
+			Self::Bullet(..) => 33
 		}
 	}
 }
@@ -85,15 +99,15 @@ impl fmt::Display for Message {
 		match self {
 			Self::Join(is_first, ip) => write!(f, "JOIN {} {}", is_first, ip),
 			Self::CurrPlayers(ips) => {
-                let mut formatted = String::new();
+				let mut formatted = String::new();
 
-                for ip in ips {
-                    formatted.push_str(ip);
-                    formatted.push_str(" ");
-                }
+				for ip in ips {
+					formatted.push_str(ip);
+					formatted.push_str(" ");
+				}
 
-                write!(f, "CURRPLAYERS {}", formatted.trim())
-            }
+				write!(f, "CURRPLAYERS {}", formatted.trim())
+			}
 			Self::Pos(x, y) => write!(f, "POS {} {}", x, y),
 			Self::Bullet(x, y, dx, dy) => write!(f, "BULLET {} {} {} {}", x, y, dx, dy)
 		}
@@ -111,14 +125,5 @@ fn serialize_ip(ip: &str) -> Vec<u8> {
 }
 
 fn deserialize_ip(ip_bytes: &[u8]) -> String {
-    println!("{:?}", ip_bytes);
-    println!("{}", ip_bytes[4..].len());
-	format!(
-		"{}.{}.{}.{}:{}",
-		ip_bytes[0],
-		ip_bytes[1],
-		ip_bytes[2],
-		ip_bytes[3],
-		u16::from_be_bytes([ip_bytes[4], ip_bytes[5]])
-	)
+	format!("{}.{}.{}.{}:{}", ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3], u16::from_be_bytes([ip_bytes[4], ip_bytes[5]]))
 }
