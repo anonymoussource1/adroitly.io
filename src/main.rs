@@ -244,7 +244,6 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 			panic!("ThIS sHOuLd NoT bE HaPPeNIng");
 		}
 		Ok(bytes_read) => {
-            println!("DESERIALIZE LINE 245 LETS GOOOO");
 			let message = Message::deserialize(&buffer[..bytes_read]);
 
 			println!("  RECIEVED \"{}\"", message);

@@ -58,18 +58,10 @@ impl Network {
 		println!("      SENT {} MESSAGE: \"{}\"", ip, message);
 	}
 
-	fn send_curr_peers(&mut self, ip: &str, peer: &mut TcpStream) {
-		let mut ips = Vec::new();
-
-		for (ip, _) in self.peers.iter() {
-			ips.push(ip.to_string());
-		}
-
-		let curr_peers = Message::CurrPlayers(ips);
+	fn send_curr_peers(&mut self, peer: &mut TcpStream) {
+		let curr_peers = Message::CurrPlayers(self.peers.clone());
 
 		peer.write_all(&curr_peers.serialize()).expect("Failed to write to peer");
-
-		println!("  SENT {} MESSAGE: \"{}\"", ip, curr_peers);
 	}
 
 	pub fn send_pos(&mut self, heli: &Helicopter) {
@@ -110,7 +102,6 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 				break;
 			}
 			Ok(bytes_read) => {
-                println!("DESERIALIZE 112 REPORTING, SIR");
 				let message = Message::deserialize(&buffer[..bytes_read]);
 
 				println!("RECIEVED \"{}\"", message);
@@ -177,6 +168,6 @@ fn handle_peer_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets: 
 			heli.y = y;
 		}
 		Message::Bullet(x, y, dx, dy) => bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy)),
-		_ => panic!("THIS DEFINETELY SHOULDN'T BE HAPPNEING!!!!!"),
+		_ => unreachable!(),
 	}
 }
