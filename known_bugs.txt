@@ -1,2 +1,3 @@
-1. Game stalling trying to acquire lock on network on join
-2. Sometimes connection gets refused on join request
+1?. Sometimes connection gets refused on join request
+
+?possibly, if during developement it continues to stop I will mark it as fixed

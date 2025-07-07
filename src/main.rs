@@ -146,6 +146,8 @@ fn main() -> Result<(), String> {
 
 		canvas.present();
 
+        drop(network);
+
 		last_time_stamp = get_current_time();
 		if last_time_stamp - start <= Duration::from_millis(1000 / 60) {
 			thread::sleep(Duration::from_millis(1000 / 60) - (last_time_stamp - start));
@@ -248,7 +250,7 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 
 			println!("  RECIEVED \"{}\"", message);
 			match message {
-				Message::CurrPlayers(ips) => {
+				Message::GameState(ips, bullets) => {
 					let mut network = network.lock().expect("Failed to acquire lock on network");
 
 					for ip in ips {
@@ -259,6 +261,8 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 
 						network.add_and_listen(ip, peer);
 					}
+
+
 
 					network.add_and_listen(response, peer);
 				}

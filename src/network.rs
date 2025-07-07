@@ -43,23 +43,11 @@ impl Network {
 	}
 
 	fn send_curr_bullets(&mut self, ip: &str, peer: &mut TcpStream) {
-		let mut message = String::from("CURRBULLETS");
-
-		for (ip, bullets) in &self.bullets {
-			let bullets = bullets.lock().expect(&format!("Failed to acquire lock on {}'s bullets", ip));
-			message.push_str(&format!(" {} {}", ip, bullets.len()));
-			for bullet in bullets.iter() {
-				message.push_str(&format!(" {} {} {} {}", bullet.x, bullet.y, bullet.dx, bullet.dy));
-			}
-		}
-
-		peer.write_all(message.as_bytes()).expect("Failed to acquire lock on peer");
-
-		println!("      SENT {} MESSAGE: \"{}\"", ip, message);
+        
 	}
 
 	fn send_curr_peers(&mut self, peer: &mut TcpStream) {
-		let curr_peers = Message::CurrPlayers(self.peers.clone());
+		let curr_peers = Message::CurrPlayers(self.peers.keys().map(|s| s.to_owned()).collect());
 
 		peer.write_all(&curr_peers.serialize()).expect("Failed to write to peer");
 	}
@@ -111,7 +99,7 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 						println!("Acquire network lock");
 
 						if is_first {
-							network.send_curr_peers(&ip, &mut stream);
+							network.send_curr_peers(&mut stream);
 						}
 
 						network.add_and_listen(ip.clone(), stream);
@@ -143,7 +131,7 @@ pub fn handle_peer(mut peer: TcpStream, heli: Arc<Mutex<Helicopter>>, bullets: A
 				let mut start = 0;
 				while start < bytes_read {
                     let message = Message::deserialize(&buffer[start..bytes_read]);
-                    println!("RECIEVED \"{}\"", message);
+                    //println!("RECIEVED \"{}\"", message);
 
 					start += message.len() as usize;
 

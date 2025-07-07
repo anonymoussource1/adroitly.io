@@ -2,7 +2,7 @@ use std::fmt;
 
 pub enum Message {
 	Join(bool, String),
-	CurrPlayers(Vec<String>),
+	GameState(HashMap<String, Vec<Message::Bullet>>),
 	Pos(f64, f64),
 	Bullet(f64, f64, f64, f64)
 }
@@ -16,14 +16,18 @@ impl Message {
 
 				join
 			}
-			Self::CurrPlayers(ips) => {
-				let mut currplayers = vec![0b01000000 + ips.len() as u8];
+			Self::GameState(state) => {
+				let mut gamestate = vec![0b01000000 + state.len() as u8];
 
-				for ip in ips {
-					currplayers.append(&mut serialize_ip(ip));
+				for (ip, bullets) in state {
+					gamestate.append(&mut serialize_ip(ip));
+                    gamestate.append(bullets.len() as u8)
+                    for bullet in bullets {
+                        gamestate.append(&mut bullet.serialize());
+                    }
 				}
 
-				currplayers
+				gamestate
 			}
 			Self::Pos(x, y) => {
 				let mut pos = vec![0b10000000];
@@ -55,16 +59,23 @@ impl Message {
 				Self::Join(is_first, ip)
 			}
 			1 => {
-                print!("DESERIALIZING CURRPLAYERS");
-				let len = bytes[0] & 0b00111111;
-				let mut ips = Vec::with_capacity(len as usize);
+				let ip_len = bytes[0] & 0b00111111;
+                let mut state = HashMap::new();
+                let mut last_pos = 1;
 
-				for i in 0..len {
-                    // 1..7
-					ips.push(deserialize_ip(&bytes[((1 + 6 * i) as usize)..(1 + 6 * (i + 1) as usize)]));
+				for i in 0..ip_len {
+                    let ip = deserialize_ip(&bytes[last_pos..=(last_pos + 6)]);
+                    let bullet_len = &bytes[last_pos + 7];
+                    let mut bullets = Vec::with_capacity(bullet_len as usize);
+                    for j in 0..bullet_len {
+                        bullets.append(deserialize(&bytes[(last_pos +  8 + j * 33)..=(last_pos + 8 + j * 33 + 33)]));
+                        last_pos += 8 * j * 33 + 33;
+                    }
+
+                    state.insert(ip, bullets);
 				}
 
-				Self::CurrPlayers(ips)
+				Self::GameState(state)
 			}
 			2 => {
 				let x = f64::from_be_bytes(bytes[1..=8].try_into().expect("Slice is incorrect length"));
@@ -84,21 +95,22 @@ impl Message {
 		}
 	}
 
-	pub fn len(&self) -> u8 {
+	/*pub fn len(&self) -> u8 {
 		match self {
 			Self::Join(..) => 7,
-			Self::CurrPlayers(ips) => 1 + 6 * ips.len() as u8,
+			Self::GameState(ips, bullets) => 1 + 6 * ips.len() as u8 + 32 * bullets.len() as u8,
 			Self::Pos(..) => 17,
 			Self::Bullet(..) => 33
 		}
-	}
+	}*/
 }
 
 impl fmt::Display for Message {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
 			Self::Join(is_first, ip) => write!(f, "JOIN {} {}", is_first, ip),
-			Self::CurrPlayers(ips) => {
+			Self::GameState(ips, bullets) => {
+                // TODO
 				let mut formatted = String::new();
 
 				for ip in ips {
@@ -127,3 +139,7 @@ fn serialize_ip(ip: &str) -> Vec<u8> {
 fn deserialize_ip(ip_bytes: &[u8]) -> String {
 	format!("{}.{}.{}.{}:{}", ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3], u16::from_be_bytes([ip_bytes[4], ip_bytes[5]]))
 }
+
+fn main() {
+    let state = Message::GameState(HashMap::from([
+            ("255.255.255.255:8000", vec![:
