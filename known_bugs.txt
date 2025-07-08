@@ -1,3 +1,2 @@
-1?. Sometimes connection gets refused on join request
-
-?possibly, if during developement it continues to stop I will mark it as fixed
+# Known Bugs
+1. Ips aren't removed when player gets disconnected

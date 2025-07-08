@@ -250,7 +250,7 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 
 			println!("  RECIEVED \"{}\"", message);
 			match message {
-				Message::GameState(ips, bullets) => {
+				Message::CurrPlayers(ips) => {
 					let mut network = network.lock().expect("Failed to acquire lock on network");
 
 					for ip in ips {
@@ -260,9 +260,7 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 						println!("  SENT {} \"{}\"", ip, join);
 
 						network.add_and_listen(ip, peer);
-					}
-
-
+                    }
 
 					network.add_and_listen(response, peer);
 				}

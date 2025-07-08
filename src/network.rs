@@ -42,12 +42,9 @@ impl Network {
 		}
 	}
 
-	fn send_curr_bullets(&mut self, ip: &str, peer: &mut TcpStream) {
-        
-	}
-
 	fn send_curr_peers(&mut self, peer: &mut TcpStream) {
 		let curr_peers = Message::CurrPlayers(self.peers.keys().map(|s| s.to_owned()).collect());
+        println!("{curr_peers}");
 
 		peer.write_all(&curr_peers.serialize()).expect("Failed to write to peer");
 	}
