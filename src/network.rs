@@ -42,9 +42,15 @@ impl Network {
 		}
 	}
 
-	fn send_curr_bullets(&mut self, ip: &str, peer: &mut TcpStream) {
+    fn send_curr_state(&mut self, peer: &mut TcpStream) {
+        let mut state_raw = HashMap::new();
+        for (ip, bullets) in self.bullets {
+           state_raw.insert(ip, bullets.lock().expect("Failed to get lock on bullets").clone());
+        }
+        let state = 
         
-	}
+        peer.write_all(&sta
+    }
 
 	fn send_curr_peers(&mut self, peer: &mut TcpStream) {
 		let curr_peers = Message::CurrPlayers(self.peers.keys().map(|s| s.to_owned()).collect());
