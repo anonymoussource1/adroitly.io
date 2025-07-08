@@ -35,22 +35,21 @@ impl Network {
 	}
 
 	pub fn send_bullet(&mut self, bullet: &Bullet) {
-        let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy);
+		let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy);
 		for (_, peer) in self.peers.iter_mut() {
-			peer.write_all(&bullet.serialize())
-				.expect("Failed to write to peer");
+			peer.write_all(&bullet.serialize()).expect("Failed to write to peer");
 		}
 	}
 
 	fn send_curr_peers(&mut self, peer: &mut TcpStream) {
 		let curr_peers = Message::CurrPlayers(self.peers.keys().map(|s| s.to_owned()).collect());
-        println!("{curr_peers}");
+		println!("{curr_peers}");
 
 		peer.write_all(&curr_peers.serialize()).expect("Failed to write to peer");
 	}
 
 	pub fn send_pos(&mut self, heli: &Helicopter) {
-        let pos = Message::Pos(heli.x, heli.y);
+		let pos = Message::Pos(heli.x, heli.y);
 		for (_, peer) in self.peers.iter_mut() {
 			peer.write_all(&pos.serialize()).expect("Failed to write to player");
 		}
@@ -127,8 +126,8 @@ pub fn handle_peer(mut peer: TcpStream, heli: Arc<Mutex<Helicopter>>, bullets: A
 			Ok(bytes_read) => {
 				let mut start = 0;
 				while start < bytes_read {
-                    let message = Message::deserialize(&buffer[start..bytes_read]);
-                    //println!("RECIEVED \"{}\"", message);
+					let message = Message::deserialize(&buffer[start..bytes_read]);
+					//println!("RECIEVED \"{}\"", message);
 
 					start += message.len() as usize;
 
@@ -153,6 +152,6 @@ fn handle_peer_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets: 
 			heli.y = y;
 		}
 		Message::Bullet(x, y, dx, dy) => bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy)),
-		_ => unreachable!(),
+		_ => unreachable!()
 	}
 }

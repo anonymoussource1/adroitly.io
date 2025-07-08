@@ -104,7 +104,7 @@ fn main() -> Result<(), String> {
 			shoot_cooldown = Duration::from_secs(0);
 		}
 
-        let old_pos = (heli.x, heli.y);
+		let old_pos = (heli.x, heli.y);
 		heli.update(&delta_time, &keyboard);
 
 		for bullets in network.bullets.values() {
@@ -115,9 +115,9 @@ fn main() -> Result<(), String> {
 
 		// END OF PHYSICS
 
-        if old_pos != (heli.x, heli.y) {
-            network.send_pos(&heli);
-        }
+		if old_pos != (heli.x, heli.y) {
+			network.send_pos(&heli);
+		}
 
 		// END OF NETWORK
 
@@ -146,7 +146,7 @@ fn main() -> Result<(), String> {
 
 		canvas.present();
 
-        drop(network);
+		drop(network);
 
 		last_time_stamp = get_current_time();
 		if last_time_stamp - start <= Duration::from_millis(1000 / 60) {
@@ -260,7 +260,7 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 						println!("  SENT {} \"{}\"", ip, join);
 
 						network.add_and_listen(ip, peer);
-                    }
+					}
 
 					network.add_and_listen(response, peer);
 				}

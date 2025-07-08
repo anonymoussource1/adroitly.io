@@ -56,12 +56,12 @@ impl Message {
 			}
 			1 => {
 				let ip_len = bytes[0] & 0b00111111;
-                let mut ips = Vec::with_capacity(ip_len as usize);
+				let mut ips = Vec::with_capacity(ip_len as usize);
 
 				for i in 0..ip_len {
-                    let ip = deserialize_ip(&bytes[(1 + i as usize * 6)..(1 + (i as usize + 1) * 6)]);
+					let ip = deserialize_ip(&bytes[(1 + i as usize * 6)..(1 + (i as usize + 1) * 6)]);
 
-                    ips.push(ip);
+					ips.push(ip);
 				}
 
 				Self::CurrPlayers(ips)
