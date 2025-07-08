@@ -35,7 +35,7 @@ impl Network {
 	}
 
 	pub fn send_bullet(&mut self, bullet: &Bullet) {
-        let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy);
+        let bullet = Message::Bullet(bullet.clone());
 		for (_, peer) in self.peers.iter_mut() {
 			peer.write_all(&bullet.serialize())
 				.expect("Failed to write to peer");
@@ -44,19 +44,13 @@ impl Network {
 
     fn send_curr_state(&mut self, peer: &mut TcpStream) {
         let mut state_raw = HashMap::new();
-        for (ip, bullets) in self.bullets {
-           state_raw.insert(ip, bullets.lock().expect("Failed to get lock on bullets").clone());
+        for (ip, bullets) in &self.bullets {
+           state_raw.insert(ip.to_string(), bullets.lock().expect("Failed to get lock on bullets").iter().map(|x| Message::Bullet(x.clone())).collect());
         }
-        let state = 
+        let state = Message::GameState(state_raw); 
         
-        peer.write_all(&sta
+        peer.write_all(&state.serialize()).expect("Failed to write to playuer");
     }
-
-	fn send_curr_peers(&mut self, peer: &mut TcpStream) {
-		let curr_peers = Message::CurrPlayers(self.peers.keys().map(|s| s.to_owned()).collect());
-
-		peer.write_all(&curr_peers.serialize()).expect("Failed to write to peer");
-	}
 
 	pub fn send_pos(&mut self, heli: &Helicopter) {
         let pos = Message::Pos(heli.x, heli.y);
@@ -105,7 +99,7 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 						println!("Acquire network lock");
 
 						if is_first {
-							network.send_curr_peers(&mut stream);
+							network.send_curr_state(&mut stream);
 						}
 
 						network.add_and_listen(ip.clone(), stream);
@@ -161,7 +155,7 @@ fn handle_peer_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets: 
 			heli.x = x;
 			heli.y = y;
 		}
-		Message::Bullet(x, y, dx, dy) => bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy)),
+		Message::Bullet(bullet) => bullets.lock().expect("Failed to acquire lock on bullets").push(bullet),
 		_ => unreachable!(),
 	}
 }

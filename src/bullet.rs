@@ -5,7 +5,7 @@ use sdl2::video::Window;
 
 pub const RADIUS: u32 = 10;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Bullet {
 	pub x: f64,
 	pub y: f64,

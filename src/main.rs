@@ -248,16 +248,23 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 
 			println!("  RECIEVED \"{}\"", message);
 			match message {
-				Message::CurrPlayers(ips) => {
+				Message::GameState(state) => {
 					let mut network = network.lock().expect("Failed to acquire lock on network");
 
-					for ip in ips {
+					for (ip, bullets) in state {
 						let mut peer = TcpStream::connect(&ip).expect(&format!("Failed to connect to IP address {}", &ip));
 						let join = Message::Join(false, network.ip.clone());
 						peer.write_all(&join.serialize()).expect(&format!("Failed to write to IP address {}", &ip));
 						println!("  SENT {} \"{}\"", ip, join);
 
-						network.add_and_listen(ip, peer);
+						network.add_and_listen(ip.clone(), peer);
+
+                        let mut new_bullets = Vec::with_capacity(bullets.len());
+                        for bullet in bullets {
+                            let Message::Bullet(bullet) = bullet else { panic!("INVALID GAMESTATE") };
+                            new_bullets.push(bullet);
+                        }
+                        network.bullets.insert(ip, Arc::new(Mutex::new(new_bullets)));
 					}
 
 					network.add_and_listen(response, peer);

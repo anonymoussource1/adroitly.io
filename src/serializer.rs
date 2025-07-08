@@ -1,12 +1,13 @@
 use std::fmt;
 use std::convert::TryInto;
 use std::collections::HashMap;
+use crate::bullet::Bullet;
 
 pub enum Message {
 	Join(bool, String),
 	GameState(HashMap<String, Vec<Message>>),
 	Pos(f64, f64),
-	Bullet(f64, f64, f64, f64),
+	Bullet(Bullet),
 }
 
 impl Message {
@@ -39,15 +40,15 @@ impl Message {
 
 				pos
 			}
-			Self::Bullet(x, y, dx, dy) => {
-				let mut bullet = vec![0b11000000];
+			Self::Bullet(bullet) => {
+				let mut bullet_mes = vec![0b11000000];
 
-				bullet.append(&mut Vec::from(x.to_be_bytes()));
-				bullet.append(&mut Vec::from(y.to_be_bytes()));
-				bullet.append(&mut Vec::from(dx.to_be_bytes()));
-				bullet.append(&mut Vec::from(dy.to_be_bytes()));
+				bullet_mes.append(&mut Vec::from(bullet.x.to_be_bytes()));
+				bullet_mes.append(&mut Vec::from(bullet.y.to_be_bytes()));
+				bullet_mes.append(&mut Vec::from(bullet.dx.to_be_bytes()));
+				bullet_mes.append(&mut Vec::from(bullet.dy.to_be_bytes()));
 
-				bullet
+				bullet_mes
 			}
 		}
 	}
@@ -92,20 +93,20 @@ impl Message {
 				let dx = f64::from_be_bytes(bytes[17..=24].try_into().expect("Slice is incorrect length"));
 				let dy = f64::from_be_bytes(bytes[25..=32].try_into().expect("Slice is incorrect length"));
 
-				Self::Bullet(x, y, dx, dy)
+				Self::Bullet(Bullet::new(x, y, dx, dy))
 			}
 			_ => unreachable!()
 		}
 	}
 
-	/*pub fn len(&self) -> u8 {
+	pub fn len(&self) -> u8 {
 		match self {
 			Self::Join(..) => 7,
-			Self::GameState(ips, bullets) => 1 + 6 * ips.len() as u8 + 32 * bullets.len() as u8,
+			Self::GameState(..) => todo!(),
 			Self::Pos(..) => 17,
 			Self::Bullet(..) => 33
 		}
-	}*/
+	}
 }
 
 impl fmt::Display for Message {
@@ -129,7 +130,7 @@ impl fmt::Display for Message {
 				write!(f, "CURRPLAYERS {}", formatted.trim())
 			}
 			Self::Pos(x, y) => write!(f, "POS {} {}", x, y),
-			Self::Bullet(x, y, dx, dy) => write!(f, "BULLET {} {} {} {}", x, y, dx, dy)
+			Self::Bullet(bullet) => write!(f, "BULLET {} {} {} {}", bullet.x, bullet.y, bullet.dx, bullet.dy)
 		}
 	}
 }
