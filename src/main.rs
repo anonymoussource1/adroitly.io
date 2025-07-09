@@ -51,7 +51,13 @@ fn main() -> Result<(), String> {
 	let network = prompt_for_network();
 	let mut shoot_cooldown = Duration::from_secs(0);
 	let mut last_time_stamp = Duration::from_secs(0);
-	let mut heli = Helicopter::new(4, 6, network.lock().expect("Failed to acquire lock on network").ip.clone());
+	let heli = Arc::new(Mutex::new(Helicopter::new(4, 6, network.lock().expect("Failed to acquire lock on network").ip.clone())));
+
+    {
+        let mut network = network.lock().expect("Failed to acquire lock on network");
+        let ip = network.ip.clone();
+        network.helis.insert(ip, heli.clone());
+    }
 
 	canvas.set_draw_color(Color::RGB(20, 20, 20));
 	canvas.clear();
@@ -70,6 +76,7 @@ fn main() -> Result<(), String> {
 		}
 
 		if mouse.is_mouse_button_pressed(MouseButton::Left) && shoot_cooldown == Duration::from_secs(0) {
+            let heli = heli.lock().expect("Failed to acquire lock on heli");
 			let new_x = mouse.x() as f64 - heli.x - helicopter::SIZE as f64 / 2.0;
 			let new_y = mouse.y() as f64 - heli.y - helicopter::SIZE as f64 / 2.0;
 
@@ -104,8 +111,6 @@ fn main() -> Result<(), String> {
 			shoot_cooldown = Duration::from_secs(0);
 		}
 
-		let old_pos = (heli.x, heli.y);
-		heli.update(&delta_time, &keyboard);
 
 		for bullets in network.bullets.values() {
 			for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter_mut() {
@@ -113,22 +118,30 @@ fn main() -> Result<(), String> {
 			}
 		}
 
+        {
+            let mut heli = heli.lock().expect("Failed to acquire lock on heli");
+            let old_pos = (heli.x, heli.y);
+            heli.update(&delta_time, &keyboard);
+
 		// END OF PHYSICS
 
-		if old_pos != (heli.x, heli.y) {
-			network.send_pos(&heli);
-		}
+            if old_pos != (heli.x, heli.y) {
+                network.send_pos(&heli);
+            }
+        }
 
 		// END OF NETWORK
 
 		canvas.set_draw_color(Color::RGB(20, 20, 20));
 		canvas.clear();
 
-		canvas.set_draw_color(Color::RGB(225, 100, 100));
-		heli.draw(&mut canvas)?;
+		for (ip, heli) in network.helis.iter() {
+			if ip == &network.ip {
+				canvas.set_draw_color(Color::RGB(225, 100, 100));
+			} else {
+				canvas.set_draw_color(Color::RGB(100, 100, 225));
+            }
 
-		for heli in network.helis.values() {
-			canvas.set_draw_color(Color::RGB(100, 100, 225));
 			heli.lock().expect("Failed to acquire lock on helicopter").draw(&mut canvas)?;
 		}
 

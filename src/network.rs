@@ -12,6 +12,7 @@ use std::sync::{
 	Mutex
 };
 use std::thread;
+use std::time::Duration;
 
 use crate::bullet::Bullet;
 use crate::helicopter::Helicopter;
@@ -98,8 +99,22 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 							network.send_curr_peers(&mut stream);
 						}
 
+                        {
+                            let heli = network.helis.get(&network.ip).unwrap().lock().expect("Failed to get lock on helicopter");
+                            let pos = Message::Pos(heli.x, heli.y);
+                            thread::sleep(Duration::from_millis(500));
+                            stream.write_all(&pos.serialize()).expect("Failed to write to peer");
+                        }
+
+                        if let Some(bullets) = network.bullets.get(&network.ip) {
+                            for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
+                                let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy);
+                                stream.write_all(&bullet.serialize()).expect("Failed to write to peer");
+                            }
+                        };
+
 						network.add_and_listen(ip.clone(), stream);
-					}
+                    }
 					_ => unreachable!()
 				}
 			}
@@ -152,6 +167,6 @@ fn handle_peer_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets: 
 			heli.y = y;
 		}
 		Message::Bullet(x, y, dx, dy) => bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy)),
-		_ => unreachable!()
+		_ => unreachable!(),
 	}
 }
