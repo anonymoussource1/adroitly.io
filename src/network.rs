@@ -51,9 +51,12 @@ impl Network {
 
 	pub fn send_pos(&mut self, heli: &Helicopter) {
 		let pos = Message::Pos(heli.x, heli.y);
-		for (_, peer) in self.peers.iter_mut() {
-			peer.write_all(&pos.serialize()).expect("Failed to write to player");
-		}
+        self.peers.retain(|_, peer| {
+            match peer.write_all(&pos.serialize()) {
+                Ok(_) => false,
+                Err(_) => true,
+            }
+        });
 	}
 
 	pub fn add_and_listen(&mut self, ip: String, peer: TcpStream) {

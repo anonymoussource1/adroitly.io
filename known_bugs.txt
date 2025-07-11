@@ -1,2 +1,3 @@
 # Known Bugs
 1. Ips aren't removed when player gets disconnected
+2. Positions aren't update when player joins
