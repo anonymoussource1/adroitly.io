@@ -38,7 +38,7 @@ impl Network {
 	pub fn send_bullet(&mut self, bullet: &Bullet) {
 		let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy);
 		for (_, peer) in self.peers.iter_mut() {
-			peer.write_all(&bullet.serialize()).expect("Failed to write to peer");
+			_ = peer.write_all(&bullet.serialize());
 		}
 	}
 
@@ -46,29 +46,32 @@ impl Network {
 		let curr_peers = Message::CurrPlayers(self.peers.keys().map(|s| s.to_owned()).collect());
 		println!("{curr_peers}");
 
-		peer.write_all(&curr_peers.serialize()).expect("Failed to write to peer");
+		_ = peer.write_all(&curr_peers.serialize());
 	}
 
 	pub fn send_pos(&mut self, heli: &Helicopter) {
 		let pos = Message::Pos(heli.x, heli.y);
-        self.peers.retain(|_, peer| {
-            match peer.write_all(&pos.serialize()) {
-                Ok(_) => false,
-                Err(_) => true,
-            }
-        });
+        for (_, peer) in self.peers.iter_mut() {
+            _ = peer.write_all(&pos.serialize());
+        }
 	}
 
 	pub fn add_and_listen(&mut self, ip: String, peer: TcpStream) {
 		self.peers.insert(ip.clone(), peer.try_clone().expect("Failed to clone peer"));
 
-		let heli = Arc::new(Mutex::new(Helicopter::new(0, 0, ip.clone())));
-		self.helis.insert(ip.clone(), heli.clone());
+		let mut heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0, ip.clone())));
+	    if let Some(old_heli) = self.helis.insert(ip.clone(), heli.clone()) {
+            heli = old_heli.clone();
+            self.helis.insert(ip.clone(), old_heli);
+        };
 
-		let peer_bullets = Arc::new(Mutex::new(Vec::new()));
+		let mut peer_bullets = Arc::new(Mutex::new(Vec::new()));
 
 		let peer_bullets_clone = peer_bullets.clone();
-		self.bullets.insert(ip, peer_bullets_clone);
+		if let Some(old_bullets) = self.bullets.insert(ip.clone(), peer_bullets_clone) {
+            peer_bullets = old_bullets.clone();
+            self.bullets.insert(ip, old_bullets);
+        };
 
 		thread::spawn(move || handle_peer(peer, heli, peer_bullets));
 	}
@@ -97,6 +100,12 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 					Message::Join(is_first, ip) => {
 						let mut network = network.lock().expect("Failed to acquire lock on network");
 						println!("Acquire network lock");
+
+                        if let Some(heli) = network.helis.get(&ip) {
+                            let heli = heli.lock().expect("Failed to get lock on helicopter");
+                            let pos = Message::Pos(heli.x, heli.y);
+                            stream.write_all(&pos.serialize()).expect("Failed to write to peer");
+                        }
 
 						if is_first {
 							network.send_curr_peers(&mut stream);

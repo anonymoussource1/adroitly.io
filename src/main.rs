@@ -51,12 +51,15 @@ fn main() -> Result<(), String> {
 	let network = prompt_for_network();
 	let mut shoot_cooldown = Duration::from_secs(0);
 	let mut last_time_stamp = Duration::from_secs(0);
-	let heli = Arc::new(Mutex::new(Helicopter::new(4, 6, network.lock().expect("Failed to acquire lock on network").ip.clone())));
+	let mut heli = Arc::new(Mutex::new(Helicopter::new(4.0, 6.0, network.lock().expect("Failed to acquire lock on network").ip.clone())));
 
     {
         let mut network = network.lock().expect("Failed to acquire lock on network");
         let ip = network.ip.clone();
-        network.helis.insert(ip, heli.clone());
+        if let Some(old_heli) = network.helis.insert(ip.clone(), heli.clone()) {
+            heli = old_heli.clone();
+            network.helis.insert(ip, old_heli);
+        }
     }
 
 	canvas.set_draw_color(Color::RGB(20, 20, 20));
@@ -245,48 +248,79 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 
 	let mut peer = TcpStream::connect(&response).expect(&format!("Failed to connect to player at IP address \"{}\"", &response));
 
-	let ip = get_player_ip();
-	let network = Arc::new(Mutex::new(Network::new(&ip)));
+	let player_ip = get_player_ip();
+	let network = Arc::new(Mutex::new(Network::new(&player_ip)));
 
-	let join = Message::Join(true, ip);
+	let join = Message::Join(true, player_ip.clone());
 
 	peer.write_all(&join.serialize()).expect("Failed to write to player");
 	println!("SENT {} \"{}\"", response, join);
 
-	let mut buffer = [0; 1024];
-	match peer.read(&mut buffer) {
-		Ok(0) => {
-			panic!("ThIS sHOuLd NoT bE HaPPeNIng");
-		}
-		Ok(bytes_read) => {
-			let message = Message::deserialize(&buffer[..bytes_read]);
+    let mut buffer = [0; 1024];
+    match peer.read(&mut buffer) {
+        Ok(0) => panic!("ThIS sHOuLd NoT bE HaPPeNIng"),
+        Ok(bytes_read) => {
+            let message = Message::deserialize(&buffer[..bytes_read]);
 
-			println!("  RECIEVED \"{}\"", message);
-			match message {
-				Message::CurrPlayers(ips) => {
-					let mut network = network.lock().expect("Failed to acquire lock on network");
+            println!("  RECIEVED \"{}\"", message);
+            match message {
+                Message::Pos(x, y) => {
+                    let mut network = network.lock().expect("Failed to acquire lock on network");
+                    let ip = network.ip.clone();
+                    network.helis.insert(ip.clone(), Arc::new(Mutex::new(Helicopter::new(x, y, ip))));
 
-					for ip in ips {
-						let mut peer = TcpStream::connect(&ip).expect(&format!("Failed to connect to IP address {}", &ip));
-						let join = Message::Join(false, network.ip.clone());
-						peer.write_all(&join.serialize()).expect(&format!("Failed to write to IP address {}", &ip));
-						println!("  SENT {} \"{}\"", ip, join);
+                    let mut buffer = [0; 1024];
+                    match peer.read(&mut buffer) {
+                        Ok(0) => panic!(">:((("),
+                        Ok(bytes_read) => {
+                            let message = Message::deserialize(&buffer[..bytes_read]);
+                            println!("{message}");
 
-						network.add_and_listen(ip, peer);
-					}
+                            if let Message::CurrPlayers(ips) = message {
+                                for ip in ips {
+                                    if ip == player_ip { continue; }
 
-					network.add_and_listen(response, peer);
-				}
-				_ => unreachable!()
-			}
+                                    if let Ok(mut peer) = TcpStream::connect(&ip) {
+                                        let join = Message::Join(false, network.ip.clone());
+                                        peer.write_all(&join.serialize()).expect(&format!("Failed to write to IP address {}", &ip));
+                                        println!("  SENT {} \"{}\"", ip, join);
 
-			let network = network.clone();
-			thread::spawn(move || network::start_listening_for_connection(network));
-		}
-		Err(e) => {
-			eprintln!("{e}");
-		}
-	}
+                                        network.add_and_listen(ip, peer);
+                                    }
+                                }
+
+                                network.add_and_listen(response.clone(), peer);
+                            }
+                        }
+                        Err(e) => panic!("{e}"),
+                    }
+
+                }
+                Message::CurrPlayers(ips) => {
+                    let mut network = network.lock().expect("Failed to acquire lock on network");
+
+                    for ip in ips {
+                        if ip == player_ip { continue; }
+
+                        if let Ok(mut peer) = TcpStream::connect(&ip) {
+                            let join = Message::Join(false, network.ip.clone());
+                            peer.write_all(&join.serialize()).expect(&format!("Failed to write to IP address {}", &ip));
+                            println!("  SENT {} \"{}\"", ip, join);
+
+                            network.add_and_listen(ip, peer);
+                        }
+                    }
+
+                    network.add_and_listen(response.clone(), peer);
+                }
+                _ => unreachable!()
+            }
+
+            let network = network.clone();
+            thread::spawn(move || network::start_listening_for_connection(network));
+        }
+        Err(e) => eprintln!("{e}"),
+    }
 
 	network
 }

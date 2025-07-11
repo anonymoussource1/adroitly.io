@@ -16,10 +16,10 @@ pub struct Helicopter {
 }
 
 impl Helicopter {
-	pub fn new(x: i32, y: i32, name: String) -> Self {
+	pub fn new(x: f64, y: f64, name: String) -> Self {
 		Self {
-			x: x as f64,
-			y: y as f64,
+			x: x,
+			y: y,
 			rot: 0.0,
 			name
 		}
