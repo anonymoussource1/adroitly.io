@@ -3,7 +3,12 @@ use std::time::Duration;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 
-pub const RADIUS: u32 = 10;
+use crate::utils::{
+    WORLD_TO_PIXELS,
+    worldspace_to_screenspace
+};
+
+pub const DIAMETER: f64 = 0.5;
 
 #[derive(Debug)]
 pub struct Bullet {
@@ -23,16 +28,18 @@ impl Bullet {
 		}
 	}
 
-	pub fn draw(&self, canvas: &mut Canvas<Window>) -> Result<(), String> {
-		draw_circle(canvas, self.x as i32, self.y as i32, RADIUS)?;
+	pub fn draw(&self, focus: (f64, f64), canvas: &mut Canvas<Window>) -> Result<(), String> {
+        let (x, y) = worldspace_to_screenspace(focus, (self.x, self.y), canvas.window().size());
+        let radius = (DIAMETER / 2.0 * WORLD_TO_PIXELS) as u32;
+		draw_circle(canvas, x, y, radius)?;
 
 		Ok(())
 	}
 
 	pub fn update(&mut self, &delta_time: &Duration) {
 		let delta_time = delta_time.as_millis() as f64 / 1000.0;
-		self.x += self.dx * 300.0 * delta_time;
-		self.y += self.dy * 300.0 * delta_time;
+		self.x += self.dx * 15.0 * delta_time;
+		self.y += self.dy * 15.0 * delta_time;
 	}
 }
 

@@ -33,6 +33,7 @@ use network::Network;
 use serializer::Message;
 use utils::{
 	get_current_time,
+    screenspace_to_worldspace,
 	Keyboard
 };
 
@@ -78,12 +79,13 @@ fn main() -> Result<(), String> {
 
 		if mouse.is_mouse_button_pressed(MouseButton::Left) && shoot_cooldown == Duration::from_secs(0) {
             let heli = heli.lock().expect("Failed to acquire lock on heli");
-			let new_x = mouse.x() as f64 - heli.x - helicopter::SIZE as f64 / 2.0;
-			let new_y = mouse.y() as f64 - heli.y - helicopter::SIZE as f64 / 2.0;
+            let (mouse_x, mouse_y) = screenspace_to_worldspace((heli.x, heli.y), (mouse.x(), mouse.y()), canvas.window().size());
+			let new_x = mouse_x - heli.x - helicopter::SIZE / 2.0;
+			let new_y = mouse_y - heli.y - helicopter::SIZE / 2.0;
 
 			let bullet = Bullet::new(
-				heli.x + helicopter::SIZE as f64 / 2.0,
-				heli.y + helicopter::SIZE as f64 / 2.0,
+				heli.x + helicopter::SIZE / 2.0,
+				heli.y + helicopter::SIZE / 2.0,
 				new_x / (new_x.powi(2) + new_y.powi(2)).sqrt(),
 				new_y / (new_x.powi(2) + new_y.powi(2)).sqrt()
 			);
@@ -135,14 +137,18 @@ fn main() -> Result<(), String> {
 		canvas.set_draw_color(Color::RGB(20, 20, 20));
 		canvas.clear();
 
-		for (ip, heli) in network.helis.iter() {
+        let focus = {
+            let heli = network.helis.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on helicoper");
+            (heli.x, heli.y)
+        };
+		for (ip, curr_heli) in network.helis.iter() {
 			if ip == &network.ip {
 				canvas.set_draw_color(Color::RGB(225, 100, 100));
 			} else {
 				canvas.set_draw_color(Color::RGB(100, 100, 225));
             }
 
-			heli.lock().expect("Failed to acquire lock on helicopter").draw(&mut canvas)?;
+			curr_heli.lock().expect("Failed to acquire lock on helicopter").draw(focus, &mut canvas)?;
 		}
 
 		for (ip, bullets) in network.bullets.iter() {
@@ -153,7 +159,7 @@ fn main() -> Result<(), String> {
 			}
 
 			for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
-				bullet.draw(&mut canvas)?;
+				bullet.draw(focus, &mut canvas)?;
 			}
 		}
 
