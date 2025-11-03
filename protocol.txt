@@ -1,6 +1,8 @@
 Initialization:
 	JOIN [is first] [ip]
-		CURRPLAYERS [ip...]
+		if is first: CURRPLAYERS [ip...]
+		POS [x] [y]
+		(BULLET [x] [y] [dx] [dy])...
 
 Gameplay:
 	POS [x] [y]

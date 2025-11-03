@@ -12,14 +12,13 @@ use std::sync::{
 	Mutex
 };
 use std::thread;
-use std::time::Duration;
 
 use crate::bullet::Bullet;
 use crate::helicopter::Helicopter;
 use crate::serializer::Message;
 
 pub struct Network {
-	peers: HashMap<String, TcpStream>,
+	pub peers: HashMap<String, TcpStream>,
 	pub bullets: HashMap<String, Arc<Mutex<Vec<Bullet>>>>,
 	pub helis: HashMap<String, Arc<Mutex<Helicopter>>>,
 	pub ip: String
@@ -44,7 +43,6 @@ impl Network {
 
 	fn send_curr_peers(&mut self, peer: &mut TcpStream) {
 		let curr_peers = Message::CurrPlayers(self.peers.keys().map(|s| s.to_owned()).collect());
-		println!("{curr_peers}");
 
 		_ = peer.write_all(&curr_peers.serialize());
 	}
@@ -56,7 +54,7 @@ impl Network {
         }
 	}
 
-	pub fn add_and_listen(&mut self, ip: String, peer: TcpStream) {
+	pub fn add_and_listen(&mut self, ip: String, peer: TcpStream) -> thread::JoinHandle<String> {
 		self.peers.insert(ip.clone(), peer.try_clone().expect("Failed to clone peer"));
 
 		let mut heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0, ip.clone())));
@@ -70,10 +68,14 @@ impl Network {
 		let peer_bullets_clone = peer_bullets.clone();
 		if let Some(old_bullets) = self.bullets.insert(ip.clone(), peer_bullets_clone) {
             peer_bullets = old_bullets.clone();
-            self.bullets.insert(ip, old_bullets);
+            self.bullets.insert(ip.clone(), old_bullets);
         };
 
-		thread::spawn(move || handle_peer(peer, heli, peer_bullets));
+	    thread::spawn(move || {
+            handle_peer(peer, heli, peer_bullets);
+            println!("Player {} disconnected.", ip);
+            ip
+        })
 	}
 }
 
@@ -82,39 +84,34 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 		let network = network.lock().expect("Failed to acquire lock on network");
 		TcpListener::bind(&network.ip).expect(&format!("Failed to bind to IP address {}", &network.ip))
 	};
+    println!("Started listening");
 	for stream in listener.incoming() {
-		println!("STARTED HANDLING STREAM");
+		println!("  Stream attempting to connect...");
 		let mut stream = stream.expect("Failed to get player stream");
 		let mut buffer = [0; 1024];
 
 		match stream.read(&mut buffer) {
 			Ok(0) => {
-				println!("  BREAKING OUT OF LISTENING LOOP");
+                println!("Something went wrong?");
 				break;
 			}
 			Ok(bytes_read) => {
+                let ip_thread;
 				let message = Message::deserialize(&buffer[..bytes_read]);
 
-				println!("RECIEVED \"{}\"", message);
 				match message {
 					Message::Join(is_first, ip) => {
+                        println!("      Recieved join message...");
 						let mut network = network.lock().expect("Failed to acquire lock on network");
-						println!("Acquire network lock");
-
-                        if let Some(heli) = network.helis.get(&ip) {
-                            let heli = heli.lock().expect("Failed to get lock on helicopter");
-                            let pos = Message::Pos(heli.x, heli.y);
-                            stream.write_all(&pos.serialize()).expect("Failed to write to peer");
-                        }
 
 						if is_first {
+                            println!("      Sending current players...");
 							network.send_curr_peers(&mut stream);
 						}
 
                         {
                             let heli = network.helis.get(&network.ip).unwrap().lock().expect("Failed to get lock on helicopter");
                             let pos = Message::Pos(heli.x, heli.y);
-                            thread::sleep(Duration::from_millis(500));
                             stream.write_all(&pos.serialize()).expect("Failed to write to peer");
                         }
 
@@ -125,10 +122,20 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
                             }
                         };
 
-						network.add_and_listen(ip.clone(), stream);
+						ip_thread = network.add_and_listen(ip.clone(), stream);
                     }
 					_ => unreachable!()
 				}
+
+                let network = network.clone();
+                thread::spawn(move || {
+                    let ip = ip_thread.join().expect("Something, somewhere, went wrong");
+                    let mut network = network.lock().expect("Failed to acquire lock on network");
+                    network.peers.remove(&ip);
+                    network.helis.remove(&ip);
+                    network.bullets.remove(&ip);
+                });
+                        
 			}
 			Err(e) => {
 				eprintln!("Failed to read connection: {}", e);
@@ -136,10 +143,10 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 			}
 		}
 
-		println!("FINISHED HANDLING STREAM");
+		println!("  Stream connected.");
 	}
 
-	println!("CLOSED LISTENING");
+	println!("Finished listening.");
 }
 
 pub fn handle_peer(mut peer: TcpStream, heli: Arc<Mutex<Helicopter>>, bullets: Arc<Mutex<Vec<Bullet>>>) {
@@ -147,7 +154,6 @@ pub fn handle_peer(mut peer: TcpStream, heli: Arc<Mutex<Helicopter>>, bullets: A
 		let mut buffer = [0; 1024];
 		match peer.read(&mut buffer) {
 			Ok(0) => {
-				println!("BREAKING OUT OF READING LOOP");
 				break;
 			}
 			Ok(bytes_read) => {
