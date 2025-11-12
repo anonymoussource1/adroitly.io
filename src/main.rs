@@ -19,6 +19,7 @@ use sdl2::mouse::{
 	MouseState
 };
 use sdl2::pixels::Color;
+use sdl2::rect::Rect;
 use sdl2::EventPump;
 
 mod bullet;
@@ -26,6 +27,7 @@ mod helicopter;
 mod network;
 mod serializer;
 mod utils;
+mod boundary;
 
 use bullet::Bullet;
 use helicopter::Helicopter;
@@ -34,8 +36,11 @@ use serializer::Message;
 use utils::{
 	get_current_time,
     screenspace_to_worldspace,
-	Keyboard
+    worldspace_to_screenspace,
+	Keyboard,
+    WORLD_TO_PIXELS
 };
+use boundary::Boundary;
 
 fn main() -> Result<(), String> {
 	let sdl2_context = sdl2::init()?;
@@ -52,7 +57,8 @@ fn main() -> Result<(), String> {
 	let network = prompt_for_network();
 	let mut shoot_cooldown = Duration::from_secs(0);
 	let mut last_time_stamp = Duration::from_secs(0);
-	let mut heli = Arc::new(Mutex::new(Helicopter::new(4.0, 6.0, network.lock().expect("Failed to acquire lock on network").ip.clone())));
+	let heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0, network.lock().expect("Failed to acquire lock on network").ip.clone())));
+    let boundaries = vec![Boundary::new(-54.0, -54.0, 108.0, 4.0), Boundary::new(50.0, -54.0, 4.0, 108.0), Boundary::new(-54.0, -54.0, 4.0, 108.0), Boundary::new(-54.0, 50.0, 108.0, 4.0), Boundary::new(-10.0, -10.0, 20.0, 20.0)];
 
     {
         let mut network = network.lock().expect("Failed to acquire lock on network");
@@ -123,7 +129,7 @@ fn main() -> Result<(), String> {
         {
             let mut heli = heli.lock().expect("Failed to acquire lock on heli");
             let old_pos = (heli.x, heli.y);
-            heli.update(&delta_time, &keyboard);
+            heli.update(&delta_time, &keyboard, &boundaries);
 
 		// END OF PHYSICS
 
@@ -141,6 +147,15 @@ fn main() -> Result<(), String> {
             let heli = network.helis.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on helicoper");
             (heli.x, heli.y)
         };
+
+        canvas.set_draw_color(Color::RGB(45, 45, 45));
+        for r in (-50..=50).step_by(5) {
+            for c in (-50..=50).step_by(5) {
+                let (x, y) = worldspace_to_screenspace(focus, (r as f64 - 0.25, c as f64 - 0.25), canvas.window().size());
+                canvas.fill_rect(Rect::new(x, y, (0.5 * WORLD_TO_PIXELS) as u32, (0.5 * WORLD_TO_PIXELS) as u32))?;
+            }
+        }
+
 		for (ip, curr_heli) in network.helis.iter() {
 			if ip == &network.ip {
 				canvas.set_draw_color(Color::RGB(225, 100, 100));
@@ -162,6 +177,10 @@ fn main() -> Result<(), String> {
 				bullet.draw(focus, &mut canvas)?;
 			}
 		}
+
+        for boundary in boundaries.iter() {
+            boundary.draw(focus, &mut canvas)?;
+        }
 
 		canvas.present();
 
