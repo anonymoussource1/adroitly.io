@@ -22,6 +22,8 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::EventPump;
 
+use rand::Rng;
+
 mod bullet;
 mod helicopter;
 mod network;
@@ -57,7 +59,7 @@ fn main() -> Result<(), String> {
 	let network = prompt_for_network();
 	let mut shoot_cooldown = Duration::from_secs(0);
 	let mut last_time_stamp = Duration::from_secs(0);
-	let heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0, network.lock().expect("Failed to acquire lock on network").ip.clone())));
+	let heli = Arc::new(Mutex::new(Helicopter::new(rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE)), rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE)), network.lock().expect("Failed to acquire lock on network").ip.clone())));
     let boundaries = vec![Boundary::new(-54.0, -54.0, 108.0, 4.0), Boundary::new(50.0, -54.0, 4.0, 108.0), Boundary::new(-54.0, -54.0, 4.0, 108.0), Boundary::new(-54.0, 50.0, 108.0, 4.0), Boundary::new(-10.0, -10.0, 20.0, 20.0)];
 
     {

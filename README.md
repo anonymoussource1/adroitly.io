@@ -4,9 +4,10 @@
 I think I might finally finish a project!*
 
 #### Priorities
-1. ~~Get positions and bullets sent over at start~~
-2. Make proper map with boundaries and random starting positions
-3. Implement death
-4. Implement building
+1. Organize codebase
+2. Fix bullets getting sent over at start + Make network resilient
+3. Give bullets a lifetiem
+4. Implement death
+5. Implement building
 
 \*Emphasis on *might*!
