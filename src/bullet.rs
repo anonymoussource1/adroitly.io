@@ -3,10 +3,7 @@ use std::time::Duration;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 
-use crate::utils::{
-    WORLD_TO_PIXELS,
-    worldspace_to_screenspace
-};
+use crate::camera::{worldspace_to_screenspace, WORLD_TO_PIXELS};
 
 pub const DIAMETER: f64 = 0.5;
 
@@ -15,22 +12,17 @@ pub struct Bullet {
 	pub x: f64,
 	pub y: f64,
 	pub dx: f64,
-	pub dy: f64
+	pub dy: f64,
 }
 
 impl Bullet {
 	pub fn new(x: f64, y: f64, dx: f64, dy: f64) -> Self {
-		Self {
-			x,
-			y,
-			dx,
-			dy
-		}
+		Self { x, y, dx, dy }
 	}
 
 	pub fn draw(&self, focus: (f64, f64), canvas: &mut Canvas<Window>) -> Result<(), String> {
-        let (x, y) = worldspace_to_screenspace(focus, (self.x, self.y), canvas.window().size());
-        let radius = (DIAMETER / 2.0 * WORLD_TO_PIXELS) as u32;
+		let (x, y) = worldspace_to_screenspace(focus, (self.x, self.y), canvas.window().size());
+		let radius = (DIAMETER / 2.0 * WORLD_TO_PIXELS) as u32;
 		draw_circle(canvas, x, y, radius)?;
 
 		Ok(())

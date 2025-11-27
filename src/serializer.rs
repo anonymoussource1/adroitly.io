@@ -4,7 +4,7 @@ pub enum Message {
 	Join(bool, String),
 	CurrPlayers(Vec<String>),
 	Pos(f64, f64),
-	Bullet(f64, f64, f64, f64)
+	Bullet(f64, f64, f64, f64),
 }
 
 impl Message {
@@ -80,7 +80,7 @@ impl Message {
 
 				Self::Bullet(x, y, dx, dy)
 			}
-			_ => unreachable!()
+			_ => unreachable!(),
 		}
 	}
 
@@ -89,7 +89,7 @@ impl Message {
 			Self::Join(..) => 7,
 			Self::CurrPlayers(ips) => 1 + 6 * ips.len() as u8,
 			Self::Pos(..) => 17,
-			Self::Bullet(..) => 33
+			Self::Bullet(..) => 33,
 		}
 	}
 }
@@ -109,7 +109,7 @@ impl fmt::Display for Message {
 				write!(f, "CURRPLAYERS {}", formatted.trim())
 			}
 			Self::Pos(x, y) => write!(f, "POS {} {}", x, y),
-			Self::Bullet(x, y, dx, dy) => write!(f, "BULLET {} {} {} {}", x, y, dx, dy)
+			Self::Bullet(x, y, dx, dy) => write!(f, "BULLET {} {} {} {}", x, y, dx, dy),
 		}
 	}
 }
