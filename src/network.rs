@@ -48,19 +48,13 @@ impl Network {
 	pub fn add_and_listen(&mut self, ip: String, player: TcpStream) -> thread::JoinHandle<String> {
 		self.players.insert(ip.clone(), player.try_clone().expect("Failed to clone player"));
 
-		let mut heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0, ip.clone())));
-		if let Some(old_heli) = self.helis.insert(ip.clone(), heli.clone()) {
-			heli = old_heli.clone();
-			self.helis.insert(ip.clone(), old_heli);
-		};
+        let heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0, ip.clone())));
+        self.helis.insert(ip.clone(), heli.clone());
 
-		let mut player_bullets = Arc::new(Mutex::new(Vec::new()));
+		let player_bullets = Arc::new(Mutex::new(Vec::new()));
 
 		let player_bullets_clone = player_bullets.clone();
-		if let Some(old_bullets) = self.bullets.insert(ip.clone(), player_bullets_clone) {
-			player_bullets = old_bullets.clone();
-			self.bullets.insert(ip.clone(), old_bullets);
-		};
+		self.bullets.insert(ip.clone(), player_bullets_clone);
 
 		thread::spawn(move || {
 			handle_player(player, heli, player_bullets);
@@ -150,7 +144,6 @@ pub fn handle_player(mut player: TcpStream, heli: Arc<Mutex<Helicopter>>, bullet
 				let mut start = 0;
 				while start < bytes_read {
 					let message = Message::deserialize(&buffer[start..bytes_read]);
-					//println!("RECIEVED \"{}\"", message);
 
 					start += message.len() as usize;
 
@@ -174,7 +167,9 @@ fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets
 			heli.x = x;
 			heli.y = y;
 		}
-		Message::Bullet(x, y, dx, dy) => bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy)),
+		Message::Bullet(x, y, dx, dy) => {
+            bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy));
+        }
 		_ => unreachable!(),
 	}
 }

@@ -69,7 +69,7 @@ fn main() -> Result<(), String> {
 	canvas.clear();
 
 	let mut shoot_cooldown = Duration::from_secs(0);
-	let mut last_time_stamp = Duration::from_secs(0);
+	let mut last_time_stamp = get_current_time();
 	'main: loop {
 		let start = get_current_time();
 		let mut network = network.lock().expect("Failed to acquire lock on network");
@@ -99,14 +99,14 @@ fn main() -> Result<(), String> {
 			network.send_bullet(&bullet);
 
 			let ip = network.ip.clone();
-			if let Some(specific_bullets) = network.bullets.get_mut(&ip) {
-				specific_bullets.lock().expect("Failed to acquire lock on specific_bullets").push(bullet);
+			if let Some(bullets) = network.bullets.get_mut(&ip) {
+				bullets.lock().expect("Failed to acquire lock on bullets").push(bullet);
 			} else {
-				let specific_bullets = Arc::new(Mutex::new(Vec::new()));
+				let bullets = Arc::new(Mutex::new(Vec::new()));
 
-				specific_bullets.lock().expect("Failed to acquire lock on specific_bullets").push(bullet);
+				bullets.lock().expect("Failed to acquire lock on bullets").push(bullet);
 
-				network.bullets.insert(ip, specific_bullets);
+				network.bullets.insert(ip, bullets);
 			}
 
 			shoot_cooldown = Duration::from_millis(250);
@@ -265,7 +265,7 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 
 			match message {
 				Message::CurrPlayers(ips) => {
-					println!("Recieved current players...");
+					println!("  Recieved current players...");
 					let mut network_lock = network.lock().expect("Failed to acquire lock on network");
 
 					for ip in ips {
