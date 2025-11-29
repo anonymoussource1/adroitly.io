@@ -6,6 +6,7 @@ use sdl2::video::Window;
 use crate::camera::{worldspace_to_screenspace, WORLD_TO_PIXELS};
 
 pub const DIAMETER: f64 = 0.5;
+pub const LIFESPAN: Duration = Duration::from_secs(2);
 
 #[derive(Debug)]
 pub struct Bullet {
@@ -13,11 +14,12 @@ pub struct Bullet {
 	pub y: f64,
 	pub dx: f64,
 	pub dy: f64,
+    pub age: Duration,
 }
 
 impl Bullet {
-	pub fn new(x: f64, y: f64, dx: f64, dy: f64) -> Self {
-		Self { x, y, dx, dy }
+	pub fn new(x: f64, y: f64, dx: f64, dy: f64, age: u64) -> Self {
+		Self { x, y, dx, dy, age: Duration::from_millis(age) }
 	}
 
 	pub fn draw(&self, focus: (f64, f64), canvas: &mut Canvas<Window>) -> Result<(), String> {
@@ -29,6 +31,7 @@ impl Bullet {
 	}
 
 	pub fn update(&mut self, &delta_time: &Duration) {
+        self.age += delta_time;
 		let delta_time = delta_time.as_millis() as f64 / 1000.0;
 		self.x += self.dx * 15.0 * delta_time;
 		self.y += self.dy * 15.0 * delta_time;

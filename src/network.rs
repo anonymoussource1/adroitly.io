@@ -26,7 +26,7 @@ impl Network {
 	}
 
 	pub fn send_bullet(&mut self, bullet: &Bullet) {
-		let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy);
+		let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy, bullet.age.as_millis());
 		for (_, player) in self.players.iter_mut() {
 			_ = player.write_all(&bullet.serialize());
 		}
@@ -100,9 +100,10 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 							stream.write_all(&pos.serialize()).expect("Failed to write to player");
 						}
 
+                        // ?
 						if let Some(bullets) = network.bullets.get(&network.ip) {
 							for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
-								let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy);
+								let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy, bullet.age.as_millis());
 								stream.write_all(&bullet.serialize()).expect("Failed to write to player");
 							}
 						};
@@ -167,8 +168,8 @@ fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets
 			heli.x = x;
 			heli.y = y;
 		}
-		Message::Bullet(x, y, dx, dy) => {
-            bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy));
+		Message::Bullet(x, y, dx, dy, age) => {
+            bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy, age as u64));
         }
 		_ => unreachable!(),
 	}

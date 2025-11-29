@@ -2,7 +2,7 @@ Initialization:
 	JOIN [is first] [ip]
 		if is first: CURRPLAYERS [ip...]
 		POS [x] [y]
-		(BULLET [x] [y] [dx] [dy])...
+		(BULLET [x] [y] [dx] [dy] [time_step])...
 
 Gameplay:
 	POS [x] [y]
@@ -21,5 +21,5 @@ Gameplay:
 		[type][x][y]
 		 2bi/x 8b 8b
 	BULLET
-		[type][x][y][dx][dy]
-		 2bi/x 8b 8b 8b  8b
+		[type][x][y][dx][dy][time_step]
+		 2bi/x 8b 8b 8b  8b     16b

@@ -94,6 +94,7 @@ fn main() -> Result<(), String> {
 				heli.y + helicopter::SIZE / 2.0,
 				new_x / (new_x.powi(2) + new_y.powi(2)).sqrt(),
 				new_y / (new_x.powi(2) + new_y.powi(2)).sqrt(),
+                0,
 			);
 
 			network.send_bullet(&bullet);
@@ -120,10 +121,12 @@ fn main() -> Result<(), String> {
 			shoot_cooldown = Duration::from_secs(0);
 		}
 
-		for bullets in network.bullets.values() {
-			for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter_mut() {
+		for bullets in network.bullets.values_mut() {
+            let mut bullets = bullets.lock().expect("Failed to acquire lock on bullets");
+			for bullet in bullets.iter_mut() {
 				bullet.update(&delta_time);
 			}
+            bullets.retain(|bullet| bullet.age < bullet::LIFESPAN);
 		}
 
 		{

@@ -1,1 +1,2 @@
 # Known Bugs
+1. Player position didn't update until player moved after loging on, can't reproduce
