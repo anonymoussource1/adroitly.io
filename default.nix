@@ -1,13 +1,12 @@
-{ nixpkgs ? import <nixpkgs> {  } }:
-
 let
-	pkgs = [
-		nixpkgs.gcc
-		nixpkgs.cargo
-		nixpkgs.SDL2
-	];
+	pkgs = import <nixpkgs> {};
+	fenix = import (fetchTarball "https://github.com/nix-community/fenix/archive/main.tar.gz") { };
 in
-	nixpkgs.stdenv.mkDerivation {
-		name = "env";
-		buildInputs = pkgs;
+	pkgs.mkShellNoCC {
+		packages = with pkgs; [
+			gcc
+			cargo
+			SDL2
+			fenix.complete.rustfmt
+		];
 	}

@@ -1,7 +1,16 @@
 use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
+use std::io::{
+	Read,
+	Write
+};
+use std::net::{
+	TcpListener,
+	TcpStream
+};
+use std::sync::{
+	Arc,
+	Mutex
+};
 use std::thread;
 
 use crate::bullet::Bullet;
@@ -12,7 +21,7 @@ pub struct Network {
 	pub players: HashMap<String, TcpStream>,
 	pub bullets: HashMap<String, Arc<Mutex<Vec<Bullet>>>>,
 	pub helis: HashMap<String, Arc<Mutex<Helicopter>>>,
-	pub ip: String,
+	pub ip: String
 }
 
 impl Network {
@@ -21,7 +30,7 @@ impl Network {
 			players: HashMap::new(),
 			bullets: HashMap::new(),
 			helis: HashMap::new(),
-			ip: ip.to_string(),
+			ip: ip.to_string()
 		}
 	}
 
@@ -48,8 +57,8 @@ impl Network {
 	pub fn add_and_listen(&mut self, ip: String, player: TcpStream) -> thread::JoinHandle<String> {
 		self.players.insert(ip.clone(), player.try_clone().expect("Failed to clone player"));
 
-        let heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0, ip.clone())));
-        self.helis.insert(ip.clone(), heli.clone());
+		let heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0, ip.clone())));
+		self.helis.insert(ip.clone(), heli.clone());
 
 		let player_bullets = Arc::new(Mutex::new(Vec::new()));
 
@@ -100,7 +109,7 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 							stream.write_all(&pos.serialize()).expect("Failed to write to player");
 						}
 
-                        // ?
+						// ?
 						if let Some(bullets) = network.bullets.get(&network.ip) {
 							for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
 								let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy, bullet.age.as_millis());
@@ -110,7 +119,7 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 
 						ip_thread = network.add_and_listen(ip.clone(), stream);
 					}
-					_ => unreachable!(),
+					_ => unreachable!()
 				}
 
 				let network = network.clone();
@@ -169,8 +178,8 @@ fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets
 			heli.y = y;
 		}
 		Message::Bullet(x, y, dx, dy, age) => {
-            bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy, age as u64));
-        }
-		_ => unreachable!(),
+			bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy, age as u64));
+		}
+		_ => unreachable!()
 	}
 }

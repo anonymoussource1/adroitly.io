@@ -3,7 +3,7 @@ pub struct Keyboard {
 	pub is_a_down: bool,
 	pub is_s_down: bool,
 	pub is_d_down: bool,
-	pub should_quit: bool,
+	pub should_quit: bool
 }
 
 impl Keyboard {
@@ -13,7 +13,7 @@ impl Keyboard {
 			is_a_down: false,
 			is_s_down: false,
 			is_d_down: false,
-			should_quit: false,
+			should_quit: false
 		}
 	}
 }

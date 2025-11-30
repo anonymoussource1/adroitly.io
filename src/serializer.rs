@@ -4,7 +4,7 @@ pub enum Message {
 	Join(bool, String),
 	CurrPlayers(Vec<String>),
 	Pos(f64, f64),
-	Bullet(f64, f64, f64, f64, u128),
+	Bullet(f64, f64, f64, f64, u128)
 }
 
 impl Message {
@@ -40,7 +40,7 @@ impl Message {
 				bullet.append(&mut Vec::from(y.to_be_bytes()));
 				bullet.append(&mut Vec::from(dx.to_be_bytes()));
 				bullet.append(&mut Vec::from(dy.to_be_bytes()));
-                bullet.append(&mut Vec::from(age.to_be_bytes()));
+				bullet.append(&mut Vec::from(age.to_be_bytes()));
 
 				bullet
 			}
@@ -78,11 +78,11 @@ impl Message {
 				let y = f64::from_be_bytes(bytes[9..=16].try_into().expect("Slice is incorrect length"));
 				let dx = f64::from_be_bytes(bytes[17..=24].try_into().expect("Slice is incorrect length"));
 				let dy = f64::from_be_bytes(bytes[25..=32].try_into().expect("Slice is incorrect length"));
-                let age = u128::from_be_bytes(bytes[33..=48].try_into().expect("Slice is incorrect length"));
+				let age = u128::from_be_bytes(bytes[33..=48].try_into().expect("Slice is incorrect length"));
 
 				Self::Bullet(x, y, dx, dy, age)
 			}
-			_ => unreachable!(),
+			_ => unreachable!()
 		}
 	}
 
@@ -91,7 +91,7 @@ impl Message {
 			Self::Join(..) => 7,
 			Self::CurrPlayers(ips) => 1 + 6 * ips.len() as u8,
 			Self::Pos(..) => 17,
-			Self::Bullet(..) => 49,
+			Self::Bullet(..) => 49
 		}
 	}
 }
@@ -111,7 +111,7 @@ impl fmt::Display for Message {
 				write!(f, "CURRPLAYERS {}", formatted.trim())
 			}
 			Self::Pos(x, y) => write!(f, "POS {} {}", x, y),
-			Self::Bullet(x, y, dx, dy, age) => write!(f, "BULLET {} {} {} {} {}", x, y, dx, dy, age),
+			Self::Bullet(x, y, dx, dy, age) => write!(f, "BULLET {} {} {} {} {}", x, y, dx, dy, age)
 		}
 	}
 }

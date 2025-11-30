@@ -1,18 +1,31 @@
-use std::io::{self, Read, Write};
+use std::io::{
+	self,
+	Read,
+	Write
+};
 use std::net::TcpStream;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+	Arc,
+	Mutex
+};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{
+	Duration,
+	SystemTime,
+	UNIX_EPOCH
+};
 
+use rand::Rng;
 use sdl2;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::mouse::{MouseButton, MouseState};
+use sdl2::mouse::{
+	MouseButton,
+	MouseState
+};
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::EventPump;
-
-use rand::Rng;
 
 mod boundary;
 mod bullet;
@@ -24,7 +37,11 @@ mod serializer;
 
 use boundary::Boundary;
 use bullet::Bullet;
-use camera::{screenspace_to_worldspace, worldspace_to_screenspace, WORLD_TO_PIXELS};
+use camera::{
+	screenspace_to_worldspace,
+	worldspace_to_screenspace,
+	WORLD_TO_PIXELS
+};
 use helicopter::Helicopter;
 use keyboard::Keyboard;
 use network::Network;
@@ -48,7 +65,7 @@ fn main() -> Result<(), String> {
 	let heli = Arc::new(Mutex::new(Helicopter::new(
 		rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE)),
 		rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE)),
-		network.lock().expect("Failed to acquire lock on network").ip.clone(),
+		network.lock().expect("Failed to acquire lock on network").ip.clone()
 	)));
 	let boundaries = vec![
 		Boundary::new(-54.0, -54.0, 108.0, 4.0),
@@ -94,7 +111,7 @@ fn main() -> Result<(), String> {
 				heli.y + helicopter::SIZE / 2.0,
 				new_x / (new_x.powi(2) + new_y.powi(2)).sqrt(),
 				new_y / (new_x.powi(2) + new_y.powi(2)).sqrt(),
-                0,
+				0
 			);
 
 			network.send_bullet(&bullet);
@@ -122,11 +139,11 @@ fn main() -> Result<(), String> {
 		}
 
 		for bullets in network.bullets.values_mut() {
-            let mut bullets = bullets.lock().expect("Failed to acquire lock on bullets");
+			let mut bullets = bullets.lock().expect("Failed to acquire lock on bullets");
 			for bullet in bullets.iter_mut() {
 				bullet.update(&delta_time);
 			}
-            bullets.retain(|bullet| bullet.age < bullet::LIFESPAN);
+			bullets.retain(|bullet| bullet.age < bullet::LIFESPAN);
 		}
 
 		{
@@ -201,16 +218,37 @@ fn main() -> Result<(), String> {
 fn get_input(event_pump: &mut EventPump, keyboard: &mut Keyboard) {
 	for event in event_pump.poll_iter() {
 		match event {
-			Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => keyboard.should_quit = true,
-			Event::KeyDown { keycode: Some(Keycode::W), .. } => keyboard.is_w_down = true,
-			Event::KeyDown { keycode: Some(Keycode::A), .. } => keyboard.is_a_down = true,
-			Event::KeyDown { keycode: Some(Keycode::S), .. } => keyboard.is_s_down = true,
-			Event::KeyDown { keycode: Some(Keycode::D), .. } => keyboard.is_d_down = true,
-			Event::KeyUp { keycode: Some(Keycode::W), .. } => keyboard.is_w_down = false,
-			Event::KeyUp { keycode: Some(Keycode::A), .. } => keyboard.is_a_down = false,
-			Event::KeyUp { keycode: Some(Keycode::S), .. } => keyboard.is_s_down = false,
-			Event::KeyUp { keycode: Some(Keycode::D), .. } => keyboard.is_d_down = false,
-			_ => (),
+			Event::Quit {
+				..
+			}
+			| Event::KeyDown {
+				keycode: Some(Keycode::Escape), ..
+			} => keyboard.should_quit = true,
+			Event::KeyDown {
+				keycode: Some(Keycode::W), ..
+			} => keyboard.is_w_down = true,
+			Event::KeyDown {
+				keycode: Some(Keycode::A), ..
+			} => keyboard.is_a_down = true,
+			Event::KeyDown {
+				keycode: Some(Keycode::S), ..
+			} => keyboard.is_s_down = true,
+			Event::KeyDown {
+				keycode: Some(Keycode::D), ..
+			} => keyboard.is_d_down = true,
+			Event::KeyUp {
+				keycode: Some(Keycode::W), ..
+			} => keyboard.is_w_down = false,
+			Event::KeyUp {
+				keycode: Some(Keycode::A), ..
+			} => keyboard.is_a_down = false,
+			Event::KeyUp {
+				keycode: Some(Keycode::S), ..
+			} => keyboard.is_s_down = false,
+			Event::KeyUp {
+				keycode: Some(Keycode::D), ..
+			} => keyboard.is_d_down = false,
+			_ => ()
 		}
 	}
 }
@@ -218,7 +256,7 @@ fn get_input(event_pump: &mut EventPump, keyboard: &mut Keyboard) {
 fn prompt_for_network() -> Arc<Mutex<Network>> {
 	let mut response = String::new();
 
-	println!("Welcome to Adroitly.io! Would you like to...");
+	println!("Welcome to Adroitly.io, the premier helicopter gaming experience! Would you like to...");
 	println!("  [1] Create a game");
 	println!("  [2] Join a friend");
 
@@ -227,7 +265,7 @@ fn prompt_for_network() -> Arc<Mutex<Network>> {
 	match response.as_str().trim() {
 		"1" => create_game(),
 		"2" => connect_to_game(),
-		_ => panic!("Incorrect response!"),
+		_ => panic!("Incorrect response!")
 	}
 }
 
@@ -302,13 +340,13 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 						network.bullets.remove(&ip);
 					});
 				}
-				_ => unreachable!(),
+				_ => unreachable!()
 			}
 
 			let network = network.clone();
 			thread::spawn(move || network::start_listening_for_connection(network));
 		}
-		Err(e) => eprintln!("{e}"),
+		Err(e) => eprintln!("{e}")
 	}
 
 	network

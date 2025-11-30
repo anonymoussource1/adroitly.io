@@ -5,7 +5,10 @@ use sdl2::render::Canvas;
 use sdl2::video::Window;
 
 use crate::boundary::Boundary;
-use crate::camera::{worldspace_to_screenspace, WORLD_TO_PIXELS};
+use crate::camera::{
+	worldspace_to_screenspace,
+	WORLD_TO_PIXELS
+};
 use crate::keyboard::Keyboard;
 
 pub const SIZE: f64 = 1.0;
@@ -15,12 +18,17 @@ pub struct Helicopter {
 	pub x: f64,
 	pub y: f64,
 	pub rot: f64,
-	pub name: String,
+	pub name: String
 }
 
 impl Helicopter {
 	pub fn new(x: f64, y: f64, name: String) -> Self {
-		Self { x, y, rot: 0.0, name }
+		Self {
+			x,
+			y,
+			rot: 0.0,
+			name
+		}
 	}
 
 	pub fn update(&mut self, delta_time: &Duration, keyboard: &Keyboard, boundaries: &Vec<Boundary>) {
