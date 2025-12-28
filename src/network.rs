@@ -54,10 +54,17 @@ impl Network {
 		}
 	}
 
+	pub fn send_death(&mut self) {
+		let death = Message::Death;
+		for (_, player) in self.players.iter_mut() {
+			_ = player.write_all(&death.serialize());
+		}
+	}
+
 	pub fn add_and_listen(&mut self, ip: String, player: TcpStream) -> thread::JoinHandle<String> {
 		self.players.insert(ip.clone(), player.try_clone().expect("Failed to clone player"));
 
-		let heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0, ip.clone())));
+		let heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0)));
 		self.helis.insert(ip.clone(), heli.clone());
 
 		let player_bullets = Arc::new(Mutex::new(Vec::new()));
@@ -91,11 +98,11 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 			}
 			Ok(bytes_read) => {
 				let ip_thread;
-				let message = Message::deserialize(&buffer[..bytes_read]);
+				let Some(message) = Message::deserialize(&buffer[..bytes_read]) else { continue };
 
 				match message {
 					Message::Join(is_first, ip) => {
-						println!("      Recieved join message...");
+						println!("      Recieved join message from {}...", ip);
 						let mut network = network.lock().expect("Failed to acquire lock on network");
 
 						if is_first {
@@ -153,8 +160,7 @@ pub fn handle_player(mut player: TcpStream, heli: Arc<Mutex<Helicopter>>, bullet
 			Ok(bytes_read) => {
 				let mut start = 0;
 				while start < bytes_read {
-					let message = Message::deserialize(&buffer[start..bytes_read]);
-
+					let Some(message) = Message::deserialize(&buffer[start..bytes_read]) else { continue };
 					start += message.len() as usize;
 
 					let bullets = bullets.clone();
@@ -180,6 +186,10 @@ fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets
 		Message::Bullet(x, y, dx, dy, age) => {
 			bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy, age as u64));
 		}
-		_ => unreachable!()
+		Message::Death => {
+			let mut heli = heli.lock().expect("Failed to acquire lock on heli");
+			heli.is_dead = !heli.is_dead;
+		}
+		_ => panic!("Recieved unsupported message during game")
 	}
 }

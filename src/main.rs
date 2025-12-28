@@ -64,8 +64,7 @@ fn main() -> Result<(), String> {
 
 	let heli = Arc::new(Mutex::new(Helicopter::new(
 		rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE)),
-		rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE)),
-		network.lock().expect("Failed to acquire lock on network").ip.clone()
+		rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE))
 	)));
 	let boundaries = vec![
 		Boundary::new(-54.0, -54.0, 108.0, 4.0),
@@ -85,7 +84,8 @@ fn main() -> Result<(), String> {
 	canvas.set_draw_color(Color::RGB(20, 20, 20));
 	canvas.clear();
 
-	let mut shoot_cooldown = Duration::from_secs(0);
+	let mut shoot_cooldown = Duration::ZERO;
+	let mut death_timer = Duration::ZERO;
 	let mut last_time_stamp = get_current_time();
 	'main: loop {
 		let start = get_current_time();
@@ -100,7 +100,7 @@ fn main() -> Result<(), String> {
 			break 'main;
 		}
 
-		if mouse.is_mouse_button_pressed(MouseButton::Left) && shoot_cooldown == Duration::from_secs(0) {
+		if mouse.is_mouse_button_pressed(MouseButton::Left) && shoot_cooldown == Duration::from_secs(0) && !heli.lock().expect("Failed to acquire lock on heli").is_dead {
 			let heli = heli.lock().expect("Failed to acquire lock on heli");
 			let (mouse_x, mouse_y) = screenspace_to_worldspace((heli.x, heli.y), (mouse.x(), mouse.y()), canvas.window().size());
 			let new_x = mouse_x - heli.x - helicopter::SIZE / 2.0;
@@ -135,7 +135,7 @@ fn main() -> Result<(), String> {
 		if delta_time <= shoot_cooldown {
 			shoot_cooldown -= delta_time;
 		} else {
-			shoot_cooldown = Duration::from_secs(0);
+			shoot_cooldown = Duration::ZERO;
 		}
 
 		for bullets in network.bullets.values_mut() {
@@ -146,16 +146,58 @@ fn main() -> Result<(), String> {
 			bullets.retain(|bullet| bullet.age < bullet::LIFESPAN);
 		}
 
-		{
+		if !heli.lock().expect("Failed to acquire lock on heli").is_dead {
 			let mut heli = heli.lock().expect("Failed to acquire lock on heli");
 			let old_pos = (heli.x, heli.y);
 			heli.update(&delta_time, &keyboard, &boundaries);
+
+			for (ip, bullets) in network.bullets.iter() {
+				if ip == &network.ip {
+					continue;
+				}
+				for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
+					let x = bullet.x - bullet::DIAMETER / 2.0;
+					let y = bullet.y - bullet::DIAMETER / 2.0;
+
+					if x < heli.x + helicopter::SIZE && x + bullet::DIAMETER > heli.x && y < heli.y + helicopter::SIZE && y + bullet::DIAMETER > heli.y {
+						heli.x = rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE));
+						heli.y = rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE));
+						death_timer = Duration::from_secs(5);
+					}
+				}
+			}
 
 			// END OF PHYSICS
 
 			if old_pos != (heli.x, heli.y) {
 				network.send_pos(&heli);
 			}
+		}
+
+		if death_timer == Duration::from_secs(5) {
+			heli.lock().expect("Failed to acquire lock on heli").is_dead = true;
+			network.send_death();
+		} else if heli.lock().expect("Failed to acquire lock on heli").is_dead && death_timer.is_zero() {
+			heli.lock().expect("Failed to acquire lock on heli").is_dead = false;
+			network.send_death();
+		}
+
+		if delta_time <= death_timer {
+			death_timer -= delta_time;
+		} else {
+			death_timer = Duration::ZERO;
+		}
+
+		if keyboard.is_p_down {
+			println!("--DEBUG INFO--");
+			for (ip, bullets) in network.bullets.iter() {
+				println!("BULLETS ON {}: {:?}", ip, bullets.lock().expect("Failed to acquire lock on bullets"));
+			}
+			for (ip, heli) in network.helis.iter() {
+				println!("HELI ON {}: {:?}", ip, heli.lock().expect("Failed to acquire lock on heli"));
+			}
+			println!("DEATH TIMER: {:?}", death_timer);
+			keyboard.is_p_down = false;
 		}
 
 		// END OF NETWORK
@@ -176,14 +218,21 @@ fn main() -> Result<(), String> {
 			}
 		}
 
-		for (ip, curr_heli) in network.helis.iter() {
+		for (ip, heli) in network.helis.iter() {
+			let heli = heli.lock().expect("Failed to acquire lock on helicopter");
 			if ip == &network.ip {
 				canvas.set_draw_color(Color::RGB(225, 100, 100));
 			} else {
 				canvas.set_draw_color(Color::RGB(100, 100, 225));
 			}
 
-			curr_heli.lock().expect("Failed to acquire lock on helicopter").draw(focus, &mut canvas)?;
+			if heli.is_dead {
+				let (x, y) = worldspace_to_screenspace(focus, (heli.x, heli.y), canvas.window().size());
+				let size = (helicopter::SIZE * WORLD_TO_PIXELS) as u32;
+				canvas.draw_rect(Rect::new(x, y, size, size))?;
+			} else {
+				heli.draw(focus, &mut canvas)?;
+			}
 		}
 
 		for (ip, bullets) in network.bullets.iter() {
@@ -248,6 +297,9 @@ fn get_input(event_pump: &mut EventPump, keyboard: &mut Keyboard) {
 			Event::KeyUp {
 				keycode: Some(Keycode::D), ..
 			} => keyboard.is_d_down = false,
+			Event::KeyDown {
+				keycode: Some(Keycode::P), ..
+			} => keyboard.is_p_down = true,
 			_ => ()
 		}
 	}
@@ -270,7 +322,8 @@ fn prompt_for_network() -> Arc<Mutex<Network>> {
 }
 
 fn create_game() -> Arc<Mutex<Network>> {
-	let ip = get_player_ip();
+	//let ip = get_player_ip();
+	let ip = String::from("10.0.0.65:8080");
 	let network = Arc::new(Mutex::new(Network::new(&ip)));
 
 	let network_clone = network.clone();
@@ -280,17 +333,19 @@ fn create_game() -> Arc<Mutex<Network>> {
 }
 
 fn connect_to_game() -> Arc<Mutex<Network>> {
-	let mut response = String::new();
+	let mut response = String::from("10.0.0.65:8080");
 
-	println!("What is one of the player's IP address?");
+	//println!("What is one of the player's IP address?");
 
-	io::stdin().read_line(&mut response).expect("Failed to read input from player");
+	//io::stdin().read_line(&mut response).expect("Failed to read input from
+	// player");
 
-	response = response.as_str().trim().to_string();
+	//response = response.as_str().trim().to_string();
 
 	let mut player = TcpStream::connect(&response).expect(&format!("Failed to connect to player at IP address \"{}\"", &response));
 
-	let player_ip = get_player_ip();
+	//let player_ip = get_player_ip();
+	let player_ip = String::from("10.0.0.65:8081");
 	let network = Arc::new(Mutex::new(Network::new(&player_ip)));
 
 	let join = Message::Join(true, player_ip.clone());
@@ -302,7 +357,9 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 	match player.read(&mut buffer) {
 		Ok(0) => panic!("ThIS sHOuLd NoT bE HaPPeNIng"),
 		Ok(bytes_read) => {
-			let message = Message::deserialize(&buffer[..bytes_read]);
+			let Some(message) = Message::deserialize(&buffer[..bytes_read]) else {
+				panic!("Did not recieve valid message during initialization")
+			};
 
 			match message {
 				Message::CurrPlayers(ips) => {
@@ -340,7 +397,7 @@ fn connect_to_game() -> Arc<Mutex<Network>> {
 						network.bullets.remove(&ip);
 					});
 				}
-				_ => unreachable!()
+				_ => panic!("Did not recieve CurrPlayers during initialization")
 			}
 
 			let network = network.clone();

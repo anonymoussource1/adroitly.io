@@ -1,3 +1,4 @@
+use std::fmt;
 use std::time::Duration;
 
 use sdl2::rect::Rect;
@@ -12,22 +13,20 @@ use crate::camera::{
 use crate::keyboard::Keyboard;
 
 pub const SIZE: f64 = 1.0;
-pub const SPEED: f64 = 6.0;
+pub const SPEED: f64 = 24.0;
 
 pub struct Helicopter {
 	pub x: f64,
 	pub y: f64,
-	pub rot: f64,
-	pub name: String
+	pub is_dead: bool
 }
 
 impl Helicopter {
-	pub fn new(x: f64, y: f64, name: String) -> Self {
+	pub fn new(x: f64, y: f64) -> Self {
 		Self {
 			x,
 			y,
-			rot: 0.0,
-			name
+			is_dead: false
 		}
 	}
 
@@ -81,5 +80,11 @@ impl Helicopter {
 		canvas.fill_rect(Rect::new(x, y, size, size))?;
 
 		Ok(())
+	}
+}
+
+impl fmt::Debug for Helicopter {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "HELICOPTER {} {} {}", self.x, self.y, self.is_dead)
 	}
 }

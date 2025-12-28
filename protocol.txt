@@ -10,16 +10,18 @@ Gameplay:
 
 Initialization:
 	JOIN
-		[type/is_first][ip address][port]
-		    2bi/1bi         4b       2b
+		[type][is_first][ip address][port]
+		  1b       1b         4b       2b
 	CURRPLAYERS
-		[type/len]([ip address][port])...
-		  2bi/6bi      4b        2b 
+		[type][len]([ip address][port])...
+		  1b	1b      4b        2b 
 
 Gameplay:
 	POS
 		[type][x][y]
-		 2bi/x 8b 8b
+		  1b   8b 8b
 	BULLET
 		[type][x][y][dx][dy][time_step]
-		 2bi/x 8b 8b 8b  8b     16b
+		  2b   8b 8b 8b  8b     16b
+	DEATH
+		[type]

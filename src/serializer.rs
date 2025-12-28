@@ -4,20 +4,25 @@ pub enum Message {
 	Join(bool, String),
 	CurrPlayers(Vec<String>),
 	Pos(f64, f64),
-	Bullet(f64, f64, f64, f64, u128)
+	Bullet(f64, f64, f64, f64, u128),
+	Death
 }
 
 impl Message {
 	pub fn serialize(&self) -> Vec<u8> {
 		match self {
 			Self::Join(is_first, ip) => {
-				let mut join = vec![0b00000000 + (*is_first as u8) << 5];
+				let mut join = Vec::with_capacity(8);
+				join.push(0);
+				join.push(*is_first as u8);
 				join.append(&mut serialize_ip(&ip));
 
 				join
 			}
 			Self::CurrPlayers(ips) => {
-				let mut players = vec![0b01000000 + ips.len() as u8];
+				let mut players = Vec::with_capacity(2 + 6 * ips.len());
+				players.push(1);
+				players.push(ips.len() as u8);
 
 				for ip in ips {
 					players.append(&mut serialize_ip(ip));
@@ -26,16 +31,18 @@ impl Message {
 				players
 			}
 			Self::Pos(x, y) => {
-				let mut pos = vec![0b10000000];
+				let mut pos = Vec::with_capacity(17);
 
+				pos.push(2);
 				pos.append(&mut Vec::from(x.to_be_bytes()));
 				pos.append(&mut Vec::from(y.to_be_bytes()));
 
 				pos
 			}
 			Self::Bullet(x, y, dx, dy, age) => {
-				let mut bullet = vec![0b11000000];
+				let mut bullet = Vec::with_capacity(49);
 
+				bullet.push(3);
 				bullet.append(&mut Vec::from(x.to_be_bytes()));
 				bullet.append(&mut Vec::from(y.to_be_bytes()));
 				bullet.append(&mut Vec::from(dx.to_be_bytes()));
@@ -44,34 +51,37 @@ impl Message {
 
 				bullet
 			}
+			Self::Death => {
+				vec![4]
+			}
 		}
 	}
 
-	pub fn deserialize(bytes: &[u8]) -> Self {
-		match bytes[0] >> 6 {
+	pub fn deserialize(bytes: &[u8]) -> Option<Self> {
+		match bytes[0] {
 			0 => {
-				let is_first = ((bytes[0] & 0b00100000) >> 5) != 0;
-				let ip = deserialize_ip(&bytes[1..]);
+				let is_first = bytes[1] != 0;
+				let ip = deserialize_ip(&bytes[2..]);
 
-				Self::Join(is_first, ip)
+				Some(Self::Join(is_first, ip))
 			}
 			1 => {
-				let ip_len = bytes[0] & 0b00111111;
+				let ip_len = bytes[1];
 				let mut ips = Vec::with_capacity(ip_len as usize);
 
 				for i in 0..ip_len {
-					let ip = deserialize_ip(&bytes[(1 + i as usize * 6)..(1 + (i as usize + 1) * 6)]);
+					let ip = deserialize_ip(&bytes[(2 + i as usize * 6)..(2 + (i as usize + 1) * 6)]);
 
 					ips.push(ip);
 				}
 
-				Self::CurrPlayers(ips)
+				Some(Self::CurrPlayers(ips))
 			}
 			2 => {
 				let x = f64::from_be_bytes(bytes[1..=8].try_into().expect("Slice is incorrect length"));
 				let y = f64::from_be_bytes(bytes[9..=16].try_into().expect("Slice is incorrect length"));
 
-				Self::Pos(x, y)
+				Some(Self::Pos(x, y))
 			}
 			3 => {
 				let x = f64::from_be_bytes(bytes[1..=8].try_into().expect("Slice is incorrect length"));
@@ -80,18 +90,23 @@ impl Message {
 				let dy = f64::from_be_bytes(bytes[25..=32].try_into().expect("Slice is incorrect length"));
 				let age = u128::from_be_bytes(bytes[33..=48].try_into().expect("Slice is incorrect length"));
 
-				Self::Bullet(x, y, dx, dy, age)
+				Some(Self::Bullet(x, y, dx, dy, age))
 			}
-			_ => unreachable!()
+			4 => Some(Self::Death),
+			_ => {
+				eprintln!("Recieved invalid message: {:?}", bytes);
+				None
+			}
 		}
 	}
 
 	pub fn len(&self) -> u8 {
 		match self {
-			Self::Join(..) => 7,
-			Self::CurrPlayers(ips) => 1 + 6 * ips.len() as u8,
+			Self::Join(..) => 8,
+			Self::CurrPlayers(ips) => 2 + 6 * ips.len() as u8,
 			Self::Pos(..) => 17,
-			Self::Bullet(..) => 49
+			Self::Bullet(..) => 49,
+			Self::Death => 1
 		}
 	}
 }
@@ -111,7 +126,8 @@ impl fmt::Display for Message {
 				write!(f, "CURRPLAYERS {}", formatted.trim())
 			}
 			Self::Pos(x, y) => write!(f, "POS {} {}", x, y),
-			Self::Bullet(x, y, dx, dy, age) => write!(f, "BULLET {} {} {} {} {}", x, y, dx, dy, age)
+			Self::Bullet(x, y, dx, dy, age) => write!(f, "BULLET {} {} {} {} {}", x, y, dx, dy, age),
+			Self::Death => write!(f, "DEATH")
 		}
 	}
 }
