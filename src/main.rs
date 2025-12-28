@@ -15,7 +15,6 @@ use std::time::{
 	UNIX_EPOCH
 };
 
-use rand::Rng;
 use sdl2;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -30,6 +29,7 @@ use sdl2::EventPump;
 mod boundary;
 mod bullet;
 mod camera;
+mod fort;
 mod helicopter;
 mod keyboard;
 mod network;
@@ -42,6 +42,7 @@ use camera::{
 	worldspace_to_screenspace,
 	WORLD_TO_PIXELS
 };
+use fort::Fort;
 use helicopter::Helicopter;
 use keyboard::Keyboard;
 use network::Network;
@@ -62,10 +63,6 @@ fn main() -> Result<(), String> {
 
 	let network = prompt_for_network();
 
-	let heli = Arc::new(Mutex::new(Helicopter::new(
-		rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE)),
-		rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE))
-	)));
 	let boundaries = vec![
 		Boundary::new(-54.0, -54.0, 108.0, 4.0),
 		Boundary::new(50.0, -54.0, 4.0, 108.0),
@@ -73,6 +70,8 @@ fn main() -> Result<(), String> {
 		Boundary::new(-54.0, 50.0, 108.0, 4.0),
 		Boundary::new(-10.0, -10.0, 20.0, 20.0),
 	];
+	let spawn = helicopter::find_valid_spawn(&boundaries);
+	let heli = Arc::new(Mutex::new(Helicopter::new(spawn.0, spawn.1)));
 
 	{
 		let mut network = network.lock().expect("Failed to acquire lock on network");
@@ -90,6 +89,7 @@ fn main() -> Result<(), String> {
 	'main: loop {
 		let start = get_current_time();
 		let mut network = network.lock().expect("Failed to acquire lock on network");
+		let mut heli = heli.lock().expect("Failed to acquire lock on heli");
 		let delta_time = start - last_time_stamp;
 
 		get_input(&mut event_pump, &mut keyboard);
@@ -100,8 +100,7 @@ fn main() -> Result<(), String> {
 			break 'main;
 		}
 
-		if mouse.is_mouse_button_pressed(MouseButton::Left) && shoot_cooldown == Duration::from_secs(0) && !heli.lock().expect("Failed to acquire lock on heli").is_dead {
-			let heli = heli.lock().expect("Failed to acquire lock on heli");
+		if mouse.is_mouse_button_pressed(MouseButton::Left) && shoot_cooldown == Duration::from_secs(0) && !heli.is_dead {
 			let (mouse_x, mouse_y) = screenspace_to_worldspace((heli.x, heli.y), (mouse.x(), mouse.y()), canvas.window().size());
 			let new_x = mouse_x - heli.x - helicopter::SIZE / 2.0;
 			let new_y = mouse_y - heli.y - helicopter::SIZE / 2.0;
@@ -120,14 +119,29 @@ fn main() -> Result<(), String> {
 			if let Some(bullets) = network.bullets.get_mut(&ip) {
 				bullets.lock().expect("Failed to acquire lock on bullets").push(bullet);
 			} else {
-				let bullets = Arc::new(Mutex::new(Vec::new()));
-
-				bullets.lock().expect("Failed to acquire lock on bullets").push(bullet);
+				let bullets = Arc::new(Mutex::new(vec![bullet]));
 
 				network.bullets.insert(ip, bullets);
 			}
 
 			shoot_cooldown = Duration::from_millis(250);
+		}
+
+		if keyboard.is_space_down {
+			let fort = Fort::new(heli.x, heli.y);
+
+			network.send_fort(&fort);
+
+			let ip = network.ip.clone();
+			if let Some(forts) = network.forts.get_mut(&ip) {
+				forts.lock().expect("Failed to acquire lock on forts").push(fort);
+			} else {
+				let forts = Arc::new(Mutex::new(vec![fort]));
+
+				network.forts.insert(ip, forts);
+			}
+
+			keyboard.is_space_down = false;
 		}
 
 		// END OF INPUT
@@ -146,8 +160,7 @@ fn main() -> Result<(), String> {
 			bullets.retain(|bullet| bullet.age < bullet::LIFESPAN);
 		}
 
-		if !heli.lock().expect("Failed to acquire lock on heli").is_dead {
-			let mut heli = heli.lock().expect("Failed to acquire lock on heli");
+		if !heli.is_dead {
 			let old_pos = (heli.x, heli.y);
 			heli.update(&delta_time, &keyboard, &boundaries);
 
@@ -160,8 +173,10 @@ fn main() -> Result<(), String> {
 					let y = bullet.y - bullet::DIAMETER / 2.0;
 
 					if x < heli.x + helicopter::SIZE && x + bullet::DIAMETER > heli.x && y < heli.y + helicopter::SIZE && y + bullet::DIAMETER > heli.y {
-						heli.x = rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE));
-						heli.y = rand::rng().random_range(-50.0..=(50.0 - helicopter::SIZE));
+						let spawn = helicopter::find_valid_spawn(&boundaries);
+
+						heli.x = spawn.0;
+						heli.y = spawn.1;
 						death_timer = Duration::from_secs(5);
 					}
 				}
@@ -175,10 +190,10 @@ fn main() -> Result<(), String> {
 		}
 
 		if death_timer == Duration::from_secs(5) {
-			heli.lock().expect("Failed to acquire lock on heli").is_dead = true;
+			heli.is_dead = true;
 			network.send_death();
-		} else if heli.lock().expect("Failed to acquire lock on heli").is_dead && death_timer.is_zero() {
-			heli.lock().expect("Failed to acquire lock on heli").is_dead = false;
+		} else if heli.is_dead && death_timer.is_zero() {
+			heli.is_dead = false;
 			network.send_death();
 		}
 
@@ -187,6 +202,23 @@ fn main() -> Result<(), String> {
 		} else {
 			death_timer = Duration::ZERO;
 		}
+
+		// END OF NETWORK
+
+		canvas.set_draw_color(Color::RGB(20, 20, 20));
+		canvas.clear();
+
+		let focus = (heli.x, heli.y);
+
+		canvas.set_draw_color(Color::RGB(45, 45, 45));
+		for r in (-50..=50).step_by(5) {
+			for c in (-50..=50).step_by(5) {
+				let (x, y) = worldspace_to_screenspace(focus, (r as f64 - 0.25, c as f64 - 0.25), canvas.window().size());
+				canvas.fill_rect(Rect::new(x, y, (0.5 * WORLD_TO_PIXELS) as u32, (0.5 * WORLD_TO_PIXELS) as u32))?;
+			}
+		}
+
+		drop(heli);
 
 		if keyboard.is_p_down {
 			println!("--DEBUG INFO--");
@@ -198,24 +230,6 @@ fn main() -> Result<(), String> {
 			}
 			println!("DEATH TIMER: {:?}", death_timer);
 			keyboard.is_p_down = false;
-		}
-
-		// END OF NETWORK
-
-		canvas.set_draw_color(Color::RGB(20, 20, 20));
-		canvas.clear();
-
-		let focus = {
-			let heli = network.helis.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on helicoper");
-			(heli.x, heli.y)
-		};
-
-		canvas.set_draw_color(Color::RGB(45, 45, 45));
-		for r in (-50..=50).step_by(5) {
-			for c in (-50..=50).step_by(5) {
-				let (x, y) = worldspace_to_screenspace(focus, (r as f64 - 0.25, c as f64 - 0.25), canvas.window().size());
-				canvas.fill_rect(Rect::new(x, y, (0.5 * WORLD_TO_PIXELS) as u32, (0.5 * WORLD_TO_PIXELS) as u32))?;
-			}
 		}
 
 		for (ip, heli) in network.helis.iter() {
@@ -244,6 +258,18 @@ fn main() -> Result<(), String> {
 
 			for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
 				bullet.draw(focus, &mut canvas)?;
+			}
+		}
+
+		for (ip, forts) in network.forts.iter() {
+			if ip == &network.ip {
+				canvas.set_draw_color(Color::RGB(225, 100, 100));
+			} else {
+				canvas.set_draw_color(Color::RGB(100, 100, 225));
+			}
+
+			for fort in forts.lock().expect("Failed to acquire lock on forts").iter() {
+				fort.draw(focus, &mut canvas)?;
 			}
 		}
 
@@ -285,6 +311,9 @@ fn get_input(event_pump: &mut EventPump, keyboard: &mut Keyboard) {
 			Event::KeyDown {
 				keycode: Some(Keycode::D), ..
 			} => keyboard.is_d_down = true,
+			Event::KeyDown {
+				keycode: Some(Keycode::Space), ..
+			} => keyboard.is_space_down = true,
 			Event::KeyUp {
 				keycode: Some(Keycode::W), ..
 			} => keyboard.is_w_down = false,
@@ -297,6 +326,9 @@ fn get_input(event_pump: &mut EventPump, keyboard: &mut Keyboard) {
 			Event::KeyUp {
 				keycode: Some(Keycode::D), ..
 			} => keyboard.is_d_down = false,
+			Event::KeyUp {
+				keycode: Some(Keycode::Space), ..
+			} => keyboard.is_space_down = false,
 			Event::KeyDown {
 				keycode: Some(Keycode::P), ..
 			} => keyboard.is_p_down = true,

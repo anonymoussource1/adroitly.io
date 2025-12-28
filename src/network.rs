@@ -14,6 +14,7 @@ use std::sync::{
 use std::thread;
 
 use crate::bullet::Bullet;
+use crate::fort::Fort;
 use crate::helicopter::Helicopter;
 use crate::serializer::Message;
 
@@ -21,6 +22,7 @@ pub struct Network {
 	pub players: HashMap<String, TcpStream>,
 	pub bullets: HashMap<String, Arc<Mutex<Vec<Bullet>>>>,
 	pub helis: HashMap<String, Arc<Mutex<Helicopter>>>,
+	pub forts: HashMap<String, Arc<Mutex<Vec<Fort>>>>,
 	pub ip: String
 }
 
@@ -30,6 +32,7 @@ impl Network {
 			players: HashMap::new(),
 			bullets: HashMap::new(),
 			helis: HashMap::new(),
+			forts: HashMap::new(),
 			ip: ip.to_string()
 		}
 	}
@@ -61,19 +64,27 @@ impl Network {
 		}
 	}
 
+	pub fn send_fort(&mut self, fort: &Fort) {
+		let fort = Message::Fort(fort.x, fort.y);
+		for (_, player) in self.players.iter_mut() {
+			_ = player.write_all(&fort.serialize());
+		}
+	}
+
 	pub fn add_and_listen(&mut self, ip: String, player: TcpStream) -> thread::JoinHandle<String> {
 		self.players.insert(ip.clone(), player.try_clone().expect("Failed to clone player"));
 
 		let heli = Arc::new(Mutex::new(Helicopter::new(0.0, 0.0)));
 		self.helis.insert(ip.clone(), heli.clone());
 
-		let player_bullets = Arc::new(Mutex::new(Vec::new()));
+		let bullets = Arc::new(Mutex::new(Vec::new()));
+		self.bullets.insert(ip.clone(), bullets.clone());
 
-		let player_bullets_clone = player_bullets.clone();
-		self.bullets.insert(ip.clone(), player_bullets_clone);
+		let forts = Arc::new(Mutex::new(Vec::new()));
+		self.forts.insert(ip.clone(), forts.clone());
 
 		thread::spawn(move || {
-			handle_player(player, heli, player_bullets);
+			handle_player(player, heli, bullets, forts);
 			println!("Player {} disconnected.", ip);
 			ip
 		})
@@ -150,7 +161,7 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 	println!("Finished listening.");
 }
 
-pub fn handle_player(mut player: TcpStream, heli: Arc<Mutex<Helicopter>>, bullets: Arc<Mutex<Vec<Bullet>>>) {
+pub fn handle_player(mut player: TcpStream, heli: Arc<Mutex<Helicopter>>, bullets: Arc<Mutex<Vec<Bullet>>>, forts: Arc<Mutex<Vec<Fort>>>) {
 	loop {
 		let mut buffer = [0; 1024];
 		match player.read(&mut buffer) {
@@ -165,7 +176,8 @@ pub fn handle_player(mut player: TcpStream, heli: Arc<Mutex<Helicopter>>, bullet
 
 					let bullets = bullets.clone();
 					let heli = heli.clone();
-					thread::spawn(move || handle_player_message(message, heli, bullets));
+					let forts = forts.clone();
+					thread::spawn(move || handle_player_message(message, heli, bullets, forts));
 				}
 			}
 			Err(e) => {
@@ -176,7 +188,7 @@ pub fn handle_player(mut player: TcpStream, heli: Arc<Mutex<Helicopter>>, bullet
 	}
 }
 
-fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets: Arc<Mutex<Vec<Bullet>>>) {
+fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets: Arc<Mutex<Vec<Bullet>>>, forts: Arc<Mutex<Vec<Fort>>>) {
 	match message {
 		Message::Pos(x, y) => {
 			let mut heli = heli.lock().expect("Failed to acquire lock on heli");
@@ -189,6 +201,9 @@ fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets
 		Message::Death => {
 			let mut heli = heli.lock().expect("Failed to acquire lock on heli");
 			heli.is_dead = !heli.is_dead;
+		}
+		Message::Fort(x, y) => {
+			forts.lock().expect("Failed to acquire lock on forts").push(Fort::new(x, y));
 		}
 		_ => panic!("Recieved unsupported message during game")
 	}

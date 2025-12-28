@@ -1,6 +1,7 @@
 use std::fmt;
 use std::time::Duration;
 
+use rand::Rng;
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
@@ -80,6 +81,21 @@ impl Helicopter {
 		canvas.fill_rect(Rect::new(x, y, size, size))?;
 
 		Ok(())
+	}
+}
+
+pub fn find_valid_spawn(boundaries: &Vec<Boundary>) -> (f64, f64) {
+	'main: loop {
+		let x = rand::rng().random_range(-50.0..=(50.0 - SIZE));
+		let y = rand::rng().random_range(-50.0..=(50.0 - SIZE));
+
+		for boundary in boundaries.iter() {
+			if x < boundary.x + boundary.width && x + SIZE > boundary.x && y < boundary.y + boundary.height && y + SIZE > boundary.y {
+				continue 'main;
+			}
+		}
+
+		return (x, y);
 	}
 }
 

@@ -5,7 +5,8 @@ pub enum Message {
 	CurrPlayers(Vec<String>),
 	Pos(f64, f64),
 	Bullet(f64, f64, f64, f64, u128),
-	Death
+	Death,
+	Fort(f64, f64)
 }
 
 impl Message {
@@ -54,6 +55,15 @@ impl Message {
 			Self::Death => {
 				vec![4]
 			}
+			Self::Fort(x, y) => {
+				let mut fort = Vec::with_capacity(17);
+
+				fort.push(5);
+				fort.append(&mut Vec::from(x.to_be_bytes()));
+				fort.append(&mut Vec::from(y.to_be_bytes()));
+
+				fort
+			}
 		}
 	}
 
@@ -93,6 +103,12 @@ impl Message {
 				Some(Self::Bullet(x, y, dx, dy, age))
 			}
 			4 => Some(Self::Death),
+			5 => {
+				let x = f64::from_be_bytes(bytes[1..=8].try_into().expect("Slice is incorrect length"));
+				let y = f64::from_be_bytes(bytes[9..=16].try_into().expect("Slice is incorrect length"));
+
+				Some(Self::Fort(x, y))
+			}
 			_ => {
 				eprintln!("Recieved invalid message: {:?}", bytes);
 				None
@@ -106,7 +122,8 @@ impl Message {
 			Self::CurrPlayers(ips) => 2 + 6 * ips.len() as u8,
 			Self::Pos(..) => 17,
 			Self::Bullet(..) => 49,
-			Self::Death => 1
+			Self::Death => 1,
+			Self::Fort(..) => 17
 		}
 	}
 }
@@ -127,7 +144,8 @@ impl fmt::Display for Message {
 			}
 			Self::Pos(x, y) => write!(f, "POS {} {}", x, y),
 			Self::Bullet(x, y, dx, dy, age) => write!(f, "BULLET {} {} {} {} {}", x, y, dx, dy, age),
-			Self::Death => write!(f, "DEATH")
+			Self::Death => write!(f, "DEATH"),
+			Self::Fort(x, y) => write!(f, "FORT {} {}", x, y)
 		}
 	}
 }
