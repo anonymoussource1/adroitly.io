@@ -127,14 +127,18 @@ fn main() -> Result<(), String> {
 			shoot_cooldown = Duration::from_millis(250);
 		}
 
-		if keyboard.is_space_down {
-			let fort = Fort::new(heli.x, heli.y);
+		if keyboard.is_space_down && !heli.is_dead {
+            let margin = (helicopter::SIZE - fort::SIZE) / 2.0;
+			let fort = Fort::new(heli.x + margin, heli.y + margin);
 
 			network.send_fort(&fort);
 
 			let ip = network.ip.clone();
 			if let Some(forts) = network.forts.get_mut(&ip) {
-				forts.lock().expect("Failed to acquire lock on forts").push(fort);
+                let mut forts = forts.lock().expect("Failed to acquire lock on forts");
+                let length = forts.len() - 1;
+                forts.get_mut(length).unwrap().next = Some(Box::new(fort.clone()));
+				forts.push(fort);
 			} else {
 				let forts = Arc::new(Mutex::new(vec![fort]));
 
@@ -266,6 +270,10 @@ fn main() -> Result<(), String> {
 				canvas.set_draw_color(Color::RGB(225, 100, 100));
 			} else {
 				canvas.set_draw_color(Color::RGB(100, 100, 225));
+			}
+
+			for fort in forts.lock().expect("Failed to acquire lock on forts").iter() {
+				fort.draw_line(focus, &mut canvas)?;
 			}
 
 			for fort in forts.lock().expect("Failed to acquire lock on forts").iter() {
