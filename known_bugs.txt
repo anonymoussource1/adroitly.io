@@ -1,1 +1,2 @@
 # Known Bugs
+1. Shadow line and actual line aren't the same

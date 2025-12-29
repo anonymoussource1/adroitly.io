@@ -18,7 +18,7 @@ pub const CONNECTION_HEIGHT: f64 = 0.5;
 pub struct Fort {
 	pub x: f64,
 	pub y: f64,
-    pub next: Option<Box<Fort>>
+    pub connections: Vec<(f64, f64)>
 }
 
 impl Fort {
@@ -26,7 +26,7 @@ impl Fort {
 		Fort {
 			x,
 			y,
-            next: None
+            connections: Vec::new()
 		}
 	}
 
@@ -38,27 +38,26 @@ impl Fort {
         Ok(())
     }
 
-    //TODO: Take in color
-    pub fn draw_line(&self, focus: (f64, f64), canvas: &mut Canvas<Window>) -> Result<(), String> {
+    pub fn draw_line(&self, focus: (f64, f64), canvas: &mut Canvas<Window>, color: Color) -> Result<(), String> {
 		let (x, y) = worldspace_to_screenspace(focus, (self.x, self.y), canvas.window().size());
 
-        if let Some(next) = &self.next {
-            let distance = ((next.y - self.y) * (next.y - self.y) + (next.x - self.x) * (next.x - self.x)).sqrt().abs();
+        for connection in &self.connections {
+            let distance = ((connection.1 - self.y) * (connection.1 - self.y) + (connection.0 - self.x) * (connection.0 - self.x)).sqrt().abs();
 
             if distance as u32 == 0 { return Ok(()) }
 
-            let temp_angle = ((next.x - self.x) / distance).acos() * (180.0 / std::f64::consts::PI);
-            let angle = if (next.y - self.y) < 0.0 { -temp_angle } else { temp_angle };
+            let temp_angle = ((connection.0 - self.x) / distance).acos() * (180.0 / std::f64::consts::PI);
+            let angle = if (connection.1 - self.y) < 0.0 { -temp_angle } else { temp_angle };
 
             let texture_creator = canvas.texture_creator();
             let mut surface = Surface::new((distance * WORLD_TO_PIXELS) as u32, (CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32, PixelFormatEnum::RGB24)?;
 
-            surface.fill_rect(Rect::new(0, 0, (distance * WORLD_TO_PIXELS) as u32, (CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32), Color::RGB(255, 255, 255))?;
+            surface.fill_rect(Rect::new(0, 0, (distance * WORLD_TO_PIXELS) as u32, (CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32), color)?;
 
             let texture = surface.as_texture(&texture_creator).unwrap();
 
             canvas.copy_ex(&texture, None, Some(Rect::new(x + (SIZE / 2.0 * WORLD_TO_PIXELS) as i32, y + ((SIZE / 2.0 - 0.25) * WORLD_TO_PIXELS) as i32, (distance * WORLD_TO_PIXELS) as u32, (CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32)), angle, Some(Point::new(0, (0.25 * WORLD_TO_PIXELS) as i32)), false, false)?;
-        } else { }
+        }
 
 		Ok(())
 	}

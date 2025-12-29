@@ -22,8 +22,12 @@ use sdl2::mouse::{
 	MouseButton,
 	MouseState
 };
+use sdl2::render::BlendMode;
 use sdl2::pixels::Color;
+use sdl2::pixels::PixelFormatEnum;
+use sdl2::surface::Surface;
 use sdl2::rect::Rect;
+use sdl2::rect::Point;
 use sdl2::EventPump;
 
 mod boundary;
@@ -71,13 +75,13 @@ fn main() -> Result<(), String> {
 		Boundary::new(-10.0, -10.0, 20.0, 20.0),
 	];
 	let spawn = helicopter::find_valid_spawn(&boundaries);
-	let heli = Arc::new(Mutex::new(Helicopter::new(spawn.0, spawn.1)));
+	let heli_mutex = Arc::new(Mutex::new(Helicopter::new(spawn.0, spawn.1)));
 
 	{
 		let mut network = network.lock().expect("Failed to acquire lock on network");
 		let ip = network.ip.clone();
-		network.helis.insert(ip, heli.clone());
-		network.send_pos(&heli.lock().expect("Failed to acquire lock on heli"));
+		network.helis.insert(ip, heli_mutex.clone());
+		network.send_pos(&heli_mutex.lock().expect("Failed to acquire lock on heli"));
 	}
 
 	canvas.set_draw_color(Color::RGB(20, 20, 20));
@@ -86,10 +90,11 @@ fn main() -> Result<(), String> {
 	let mut shoot_cooldown = Duration::ZERO;
 	let mut death_timer = Duration::ZERO;
 	let mut last_time_stamp = get_current_time();
+    let mut curr_fort_index = 0;
 	'main: loop {
 		let start = get_current_time();
 		let mut network = network.lock().expect("Failed to acquire lock on network");
-		let mut heli = heli.lock().expect("Failed to acquire lock on heli");
+		let mut heli = heli_mutex.lock().expect("Failed to acquire lock on heli");
 		let delta_time = start - last_time_stamp;
 
 		get_input(&mut event_pump, &mut keyboard);
@@ -131,19 +136,55 @@ fn main() -> Result<(), String> {
             let margin = (helicopter::SIZE - fort::SIZE) / 2.0;
 			let fort = Fort::new(heli.x + margin, heli.y + margin);
 
-			network.send_fort(&fort);
-
+            // TODO: replace with if_let
 			let ip = network.ip.clone();
-			if let Some(forts) = network.forts.get_mut(&ip) {
-                let mut forts = forts.lock().expect("Failed to acquire lock on forts");
-                let length = forts.len() - 1;
-                forts.get_mut(length).unwrap().next = Some(Box::new(fort.clone()));
-				forts.push(fort);
-			} else {
-				let forts = Arc::new(Mutex::new(vec![fort]));
+            if network.forts.get_mut(&ip).is_none() {
+                network.send_fort(&fort);
+                let forts = Arc::new(Mutex::new(vec![fort]));
+                network.forts.insert(ip.clone(), forts);
+            } else {
+                let mut forts = network.forts.get(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
 
-				network.forts.insert(ip, forts);
-			}
+                if let Some((index, other)) = forts.iter().enumerate().find(|&other| {
+                    let other = other.1;
+                    let distance = ((fort.y - other.y) * (fort.y - other.y) + (fort.x - other.x) * (fort.x - other.x)).sqrt().abs();
+
+                    distance < 3.0
+                }) {
+                    let curr_fort = forts.get(curr_fort_index).unwrap();
+                    let is_valid_connection = !curr_fort.connections.contains(&(other.x, other.y)) && !other.connections.contains(&(curr_fort.x, curr_fort.y));
+                    let other = (other.x, other.y);
+                    let curr_fort = forts.get_mut(curr_fort_index).unwrap();
+
+                    if other.0 != curr_fort.x || other.1 != curr_fort.y {
+                        curr_fort_index = index;
+
+                        let distance = ((curr_fort.y - other.1) * (curr_fort.y - other.1) + (curr_fort.x - other.0) * (curr_fort.x - other.0)).sqrt().abs();
+                        if distance < 15.0 && is_valid_connection {
+                            curr_fort.connections.push((other.0, other.1));
+                        }
+                    }
+                } else {
+                    let curr_fort = forts.get(curr_fort_index).unwrap();
+                    let distance = ((heli.y - curr_fort.y) * (heli.y - curr_fort.y) + (heli.x - curr_fort.x) * (heli.x - curr_fort.x)).sqrt().abs();
+
+                    if distance > 3.0 {
+                        drop(forts);
+                        network.send_fort(&fort);
+                        let mut forts = network.forts.get_mut(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
+
+                        if distance < 15.0 {
+                            let curr_fort = forts.get_mut(curr_fort_index).unwrap();
+                            curr_fort.connections.push((fort.x, fort.y));
+                            forts.push(fort);
+                        } else {
+                            forts.push(fort);
+                        }
+
+                        curr_fort_index = forts.len() - 1;
+                    }
+                }
+            }
 
 			keyboard.is_space_down = false;
 		}
@@ -266,20 +307,46 @@ fn main() -> Result<(), String> {
 		}
 
 		for (ip, forts) in network.forts.iter() {
-			if ip == &network.ip {
+            let color = if ip == &network.ip {
 				canvas.set_draw_color(Color::RGB(225, 100, 100));
+                Color::RGB(225, 100, 100)
 			} else {
 				canvas.set_draw_color(Color::RGB(100, 100, 225));
-			}
+                Color::RGB(100, 100, 225)
+			};
 
 			for fort in forts.lock().expect("Failed to acquire lock on forts").iter() {
-				fort.draw_line(focus, &mut canvas)?;
+				fort.draw_line(focus, &mut canvas, color)?;
 			}
 
 			for fort in forts.lock().expect("Failed to acquire lock on forts").iter() {
 				fort.draw(focus, &mut canvas)?;
 			}
 		}
+
+        if let Some(forts) = network.forts.get(&network.ip) {
+            let heli = heli_mutex.lock().expect("Failed to acquire lock on heli");
+            let forts = forts.lock().expect("Failed to acquire lock on fort");
+            let fort = forts.get(curr_fort_index).unwrap();
+            let (x, y) = worldspace_to_screenspace(focus, (fort.x, fort.y), canvas.window().size());
+
+            let distance = ((heli.y - fort.y) * (heli.y - fort.y) + (heli.x - fort.x) * (heli.x - fort.x)).sqrt().abs();
+            if distance as u32 != 0 && distance < 15.0 {
+                let temp_angle = ((heli.x - fort.x) / distance).acos() * (180.0 / std::f64::consts::PI);
+                let angle = if (heli.y - fort.y) < 0.0 { -temp_angle } else { temp_angle };
+
+                let texture_creator = canvas.texture_creator();
+                let mut surface = Surface::new((distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32, PixelFormatEnum::RGB24)?;
+
+                surface.fill_rect(Rect::new(0, 0, (distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32), Color::RGB(225, 100, 100))?;
+
+                let mut texture = surface.as_texture(&texture_creator).unwrap();
+                texture.set_blend_mode(BlendMode::Blend);
+                texture.set_alpha_mod(125);
+
+                canvas.copy_ex(&texture, None, Some(Rect::new(x + (fort::SIZE / 2.0 * WORLD_TO_PIXELS) as i32, y + ((fort::SIZE / 2.0 - 0.25) * WORLD_TO_PIXELS) as i32, (distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32)), angle, Some(Point::new(0, (0.25 * WORLD_TO_PIXELS) as i32)), false, false)?;
+            }
+        }
 
 		for boundary in boundaries.iter() {
 			boundary.draw(focus, &mut canvas)?;
