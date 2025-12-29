@@ -22,12 +22,16 @@ use sdl2::mouse::{
 	MouseButton,
 	MouseState
 };
+use sdl2::pixels::{
+	Color,
+	PixelFormatEnum
+};
+use sdl2::rect::{
+	Point,
+	Rect
+};
 use sdl2::render::BlendMode;
-use sdl2::pixels::Color;
-use sdl2::pixels::PixelFormatEnum;
 use sdl2::surface::Surface;
-use sdl2::rect::Rect;
-use sdl2::rect::Point;
 use sdl2::EventPump;
 
 mod boundary;
@@ -90,7 +94,7 @@ fn main() -> Result<(), String> {
 	let mut shoot_cooldown = Duration::ZERO;
 	let mut death_timer = Duration::ZERO;
 	let mut last_time_stamp = get_current_time();
-    let mut curr_fort_index = 0;
+	let mut curr_fort_index = 0;
 	'main: loop {
 		let start = get_current_time();
 		let mut network = network.lock().expect("Failed to acquire lock on network");
@@ -133,58 +137,58 @@ fn main() -> Result<(), String> {
 		}
 
 		if keyboard.is_space_down && !heli.is_dead {
-            let margin = (helicopter::SIZE - fort::SIZE) / 2.0;
+			let margin = (helicopter::SIZE - fort::SIZE) / 2.0;
 			let fort = Fort::new(heli.x + margin, heli.y + margin);
 
-            // TODO: replace with if_let
+			// TODO: replace with if_let
 			let ip = network.ip.clone();
-            if network.forts.get_mut(&ip).is_none() {
-                network.send_fort(&fort);
-                let forts = Arc::new(Mutex::new(vec![fort]));
-                network.forts.insert(ip.clone(), forts);
-            } else {
-                let mut forts = network.forts.get(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
+			if network.forts.get_mut(&ip).is_none() {
+				network.send_fort(&fort);
+				let forts = Arc::new(Mutex::new(vec![fort]));
+				network.forts.insert(ip.clone(), forts);
+			} else {
+				let mut forts = network.forts.get(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
 
-                if let Some((index, other)) = forts.iter().enumerate().find(|&other| {
-                    let other = other.1;
-                    let distance = ((fort.y - other.y) * (fort.y - other.y) + (fort.x - other.x) * (fort.x - other.x)).sqrt().abs();
+				if let Some((index, other)) = forts.iter().enumerate().find(|&other| {
+					let other = other.1;
+					let distance = ((fort.y - other.y) * (fort.y - other.y) + (fort.x - other.x) * (fort.x - other.x)).sqrt().abs();
 
-                    distance < 3.0
-                }) {
-                    let curr_fort = forts.get(curr_fort_index).unwrap();
-                    let is_valid_connection = !curr_fort.connections.contains(&(other.x, other.y)) && !other.connections.contains(&(curr_fort.x, curr_fort.y));
-                    let other = (other.x, other.y);
-                    let curr_fort = forts.get_mut(curr_fort_index).unwrap();
+					distance < 3.0
+				}) {
+					let curr_fort = forts.get(curr_fort_index).unwrap();
+					let is_valid_connection = !curr_fort.connections.contains(&(other.x, other.y)) && !other.connections.contains(&(curr_fort.x, curr_fort.y));
+					let other = (other.x, other.y);
+					let curr_fort = forts.get_mut(curr_fort_index).unwrap();
 
-                    if other.0 != curr_fort.x || other.1 != curr_fort.y {
-                        curr_fort_index = index;
+					if other.0 != curr_fort.x || other.1 != curr_fort.y {
+						curr_fort_index = index;
 
-                        let distance = ((curr_fort.y - other.1) * (curr_fort.y - other.1) + (curr_fort.x - other.0) * (curr_fort.x - other.0)).sqrt().abs();
-                        if distance < 15.0 && is_valid_connection {
-                            curr_fort.connections.push((other.0, other.1));
-                        }
-                    }
-                } else {
-                    let curr_fort = forts.get(curr_fort_index).unwrap();
-                    let distance = ((heli.y - curr_fort.y) * (heli.y - curr_fort.y) + (heli.x - curr_fort.x) * (heli.x - curr_fort.x)).sqrt().abs();
+						let distance = ((curr_fort.y - other.1) * (curr_fort.y - other.1) + (curr_fort.x - other.0) * (curr_fort.x - other.0)).sqrt().abs();
+						if distance < 15.0 && is_valid_connection {
+							curr_fort.connections.push((other.0, other.1));
+						}
+					}
+				} else {
+					let curr_fort = forts.get(curr_fort_index).unwrap();
+					let distance = ((heli.y - curr_fort.y) * (heli.y - curr_fort.y) + (heli.x - curr_fort.x) * (heli.x - curr_fort.x)).sqrt().abs();
 
-                    if distance > 3.0 {
-                        drop(forts);
-                        network.send_fort(&fort);
-                        let mut forts = network.forts.get_mut(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
+					if distance > 3.0 {
+						drop(forts);
+						network.send_fort(&fort);
+						let mut forts = network.forts.get_mut(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
 
-                        if distance < 15.0 {
-                            let curr_fort = forts.get_mut(curr_fort_index).unwrap();
-                            curr_fort.connections.push((fort.x, fort.y));
-                            forts.push(fort);
-                        } else {
-                            forts.push(fort);
-                        }
+						if distance < 15.0 {
+							let curr_fort = forts.get_mut(curr_fort_index).unwrap();
+							curr_fort.connections.push((fort.x, fort.y));
+							forts.push(fort);
+						} else {
+							forts.push(fort);
+						}
 
-                        curr_fort_index = forts.len() - 1;
-                    }
-                }
-            }
+						curr_fort_index = forts.len() - 1;
+					}
+				}
+			}
 
 			keyboard.is_space_down = false;
 		}
@@ -307,12 +311,12 @@ fn main() -> Result<(), String> {
 		}
 
 		for (ip, forts) in network.forts.iter() {
-            let color = if ip == &network.ip {
+			let color = if ip == &network.ip {
 				canvas.set_draw_color(Color::RGB(225, 100, 100));
-                Color::RGB(225, 100, 100)
+				Color::RGB(225, 100, 100)
 			} else {
 				canvas.set_draw_color(Color::RGB(100, 100, 225));
-                Color::RGB(100, 100, 225)
+				Color::RGB(100, 100, 225)
 			};
 
 			for fort in forts.lock().expect("Failed to acquire lock on forts").iter() {
@@ -324,29 +328,45 @@ fn main() -> Result<(), String> {
 			}
 		}
 
-        if let Some(forts) = network.forts.get(&network.ip) {
-            let heli = heli_mutex.lock().expect("Failed to acquire lock on heli");
-            let forts = forts.lock().expect("Failed to acquire lock on fort");
-            let fort = forts.get(curr_fort_index).unwrap();
-            let (x, y) = worldspace_to_screenspace(focus, (fort.x, fort.y), canvas.window().size());
+		if let Some(forts) = network.forts.get(&network.ip) {
+			let heli = heli_mutex.lock().expect("Failed to acquire lock on heli");
+			let forts = forts.lock().expect("Failed to acquire lock on fort");
+			let fort = forts.get(curr_fort_index).unwrap();
+			let (x, y) = worldspace_to_screenspace(focus, (fort.x, fort.y), canvas.window().size());
 
-            let distance = ((heli.y - fort.y) * (heli.y - fort.y) + (heli.x - fort.x) * (heli.x - fort.x)).sqrt().abs();
-            if distance as u32 != 0 && distance < 15.0 {
-                let temp_angle = ((heli.x - fort.x) / distance).acos() * (180.0 / std::f64::consts::PI);
-                let angle = if (heli.y - fort.y) < 0.0 { -temp_angle } else { temp_angle };
+			let distance = ((heli.y - fort.y) * (heli.y - fort.y) + (heli.x - fort.x) * (heli.x - fort.x)).sqrt().abs();
+			if distance as u32 != 0 && distance < 15.0 {
+				let temp_angle = ((heli.x - fort.x) / distance).acos() * (180.0 / std::f64::consts::PI);
+				let angle = if (heli.y - fort.y) < 0.0 { -temp_angle } else { temp_angle };
 
-                let texture_creator = canvas.texture_creator();
-                let mut surface = Surface::new((distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32, PixelFormatEnum::RGB24)?;
+				let texture_creator = canvas.texture_creator();
+				let mut surface = Surface::new((distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32, PixelFormatEnum::RGB24)?;
 
-                surface.fill_rect(Rect::new(0, 0, (distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32), Color::RGB(225, 100, 100))?;
+				surface.fill_rect(
+					Rect::new(0, 0, (distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32),
+					Color::RGB(225, 100, 100)
+				)?;
 
-                let mut texture = surface.as_texture(&texture_creator).unwrap();
-                texture.set_blend_mode(BlendMode::Blend);
-                texture.set_alpha_mod(125);
+				let mut texture = surface.as_texture(&texture_creator).unwrap();
+				texture.set_blend_mode(BlendMode::Blend);
+				texture.set_alpha_mod(125);
 
-                canvas.copy_ex(&texture, None, Some(Rect::new(x + (fort::SIZE / 2.0 * WORLD_TO_PIXELS) as i32, y + ((fort::SIZE / 2.0 - 0.25) * WORLD_TO_PIXELS) as i32, (distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32)), angle, Some(Point::new(0, (0.25 * WORLD_TO_PIXELS) as i32)), false, false)?;
-            }
-        }
+				canvas.copy_ex(
+					&texture,
+					None,
+					Some(Rect::new(
+						x + (fort::SIZE / 2.0 * WORLD_TO_PIXELS) as i32,
+						y + ((fort::SIZE / 2.0 - 0.25) * WORLD_TO_PIXELS) as i32,
+						(distance * WORLD_TO_PIXELS) as u32,
+						(fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32
+					)),
+					angle,
+					Some(Point::new(0, (0.25 * WORLD_TO_PIXELS) as i32)),
+					false,
+					false
+				)?;
+			}
+		}
 
 		for boundary in boundaries.iter() {
 			boundary.draw(focus, &mut canvas)?;
