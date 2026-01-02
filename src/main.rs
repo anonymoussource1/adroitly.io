@@ -16,6 +16,7 @@ use std::time::{
 };
 
 use sdl2;
+use sdl2::EventPump;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::{
@@ -32,7 +33,6 @@ use sdl2::rect::{
 };
 use sdl2::render::BlendMode;
 use sdl2::surface::Surface;
-use sdl2::EventPump;
 
 mod boundary;
 mod bullet;
@@ -46,9 +46,9 @@ mod serializer;
 use boundary::Boundary;
 use bullet::Bullet;
 use camera::{
+	WORLD_TO_PIXELS,
 	screenspace_to_worldspace,
-	worldspace_to_screenspace,
-	WORLD_TO_PIXELS
+	worldspace_to_screenspace
 };
 use fort::Fort;
 use helicopter::Helicopter;
@@ -57,15 +57,15 @@ use network::Network;
 use serializer::Message;
 
 fn main() -> Result<(), String> {
-	let sdl2_context = sdl2::init()?;
-	let mut event_pump = match sdl2_context.event_pump() {
-		Ok(event_pump) => event_pump,
+	let sdl2 = sdl2::init()?;
+	let mut events = match sdl2.event_pump() {
+		Ok(events) => events,
 		Err(err) => {
 			panic!("{}", err);
 		}
 	};
-	let video_subsystem = sdl2_context.video()?;
-	let window = video_subsystem.window("Adroitly.io", 1500, 1200).position_centered().resizable().build().map_err(|e| e.to_string())?;
+	let video = sdl2.video()?;
+	let window = video.window("Adroitly.io", 1500, 1200).position_centered().resizable().build().map_err(|e| e.to_string())?;
 	let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
 	let mut keyboard = Keyboard::new();
 
@@ -101,9 +101,9 @@ fn main() -> Result<(), String> {
 		let mut heli = heli_mutex.lock().expect("Failed to acquire lock on heli");
 		let delta_time = start - last_time_stamp;
 
-		get_input(&mut event_pump, &mut keyboard);
+		get_input(&mut events, &mut keyboard);
 
-		let mouse = MouseState::new(&event_pump);
+		let mouse = MouseState::new(&events);
 
 		if keyboard.should_quit {
 			break 'main;
@@ -140,14 +140,11 @@ fn main() -> Result<(), String> {
 			let margin = (helicopter::SIZE - fort::SIZE) / 2.0;
 			let fort = Fort::new(heli.x + margin, heli.y + margin);
 
-			// TODO: replace with if_let
 			let ip = network.ip.clone();
-			if network.forts.get_mut(&ip).is_none() {
-				network.send_fort(&fort);
-				let forts = Arc::new(Mutex::new(vec![fort]));
-				network.forts.insert(ip.clone(), forts);
-			} else {
-				let mut forts = network.forts.get(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
+			if let Some(forts) = network.forts.get_mut(&ip)
+				&& !forts.lock().expect("Failed to acquire lock on forts").is_empty()
+			{
+				let mut forts = forts.lock().expect("Failed to acquire lock on forts");
 
 				if let Some((index, other)) = forts.iter().enumerate().find(|&other| {
 					let other = other.1;
@@ -188,6 +185,10 @@ fn main() -> Result<(), String> {
 						curr_fort_index = forts.len() - 1;
 					}
 				}
+			} else {
+				network.send_fort(&fort);
+				let forts = Arc::new(Mutex::new(vec![fort]));
+				network.forts.insert(ip.clone(), forts);
 			}
 
 			keyboard.is_space_down = false;
@@ -215,6 +216,30 @@ fn main() -> Result<(), String> {
 
 			for (ip, bullets) in network.bullets.iter() {
 				if ip == &network.ip {
+					if let Some(forts) = network.forts.get(ip) {
+						let mut forts = forts.lock().expect("Failed to acquire lock on forts");
+						for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
+							let mut removed_forts = Vec::new();
+							let x = bullet.x - bullet::DIAMETER / 2.0;
+							let y = bullet.y - bullet::DIAMETER / 2.0;
+							let len = forts.len();
+
+							forts.retain(|fort| {
+								if x < fort.x + helicopter::SIZE && x + bullet::DIAMETER > fort.x && y < fort.y + helicopter::SIZE && y + bullet::DIAMETER > fort.y {
+									removed_forts.push((fort.x, fort.y));
+									false
+								} else {
+									true
+								}
+							});
+							forts.iter_mut().for_each(|fort| fort.connections.retain(|connection| !removed_forts.contains(connection)));
+
+							if curr_fort_index != 0 {
+								curr_fort_index = curr_fort_index - (len - forts.len());
+							}
+						}
+					} else {
+					}
 					continue;
 				}
 				for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
@@ -331,40 +356,43 @@ fn main() -> Result<(), String> {
 		if let Some(forts) = network.forts.get(&network.ip) {
 			let heli = heli_mutex.lock().expect("Failed to acquire lock on heli");
 			let forts = forts.lock().expect("Failed to acquire lock on fort");
-			let fort = forts.get(curr_fort_index).unwrap();
-			let (x, y) = worldspace_to_screenspace(focus, (fort.x, fort.y), canvas.window().size());
 
-			let distance = ((heli.y - fort.y) * (heli.y - fort.y) + (heli.x - fort.x) * (heli.x - fort.x)).sqrt().abs();
-			if distance as u32 != 0 && distance < 15.0 {
-				let temp_angle = ((heli.x - fort.x) / distance).acos() * (180.0 / std::f64::consts::PI);
-				let angle = if (heli.y - fort.y) < 0.0 { -temp_angle } else { temp_angle };
+			if !forts.is_empty() {
+				let fort = forts.get(curr_fort_index).unwrap();
+				let (x, y) = worldspace_to_screenspace(focus, (fort.x, fort.y), canvas.window().size());
 
-				let texture_creator = canvas.texture_creator();
-				let mut surface = Surface::new((distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32, PixelFormatEnum::RGB24)?;
+				let distance = ((heli.y - fort.y) * (heli.y - fort.y) + (heli.x - fort.x) * (heli.x - fort.x)).sqrt().abs();
+				if distance as u32 != 0 && distance < 15.0 {
+					let temp_angle = ((heli.x - fort.x) / distance).acos() * (180.0 / std::f64::consts::PI);
+					let angle = if (heli.y - fort.y) < 0.0 { -temp_angle } else { temp_angle };
 
-				surface.fill_rect(
-					Rect::new(0, 0, (distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32),
-					Color::RGB(225, 100, 100)
-				)?;
+					let texture_creator = canvas.texture_creator();
+					let mut surface = Surface::new((distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32, PixelFormatEnum::RGB24)?;
 
-				let mut texture = surface.as_texture(&texture_creator).unwrap();
-				texture.set_blend_mode(BlendMode::Blend);
-				texture.set_alpha_mod(125);
+					surface.fill_rect(
+						Rect::new(0, 0, (distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32),
+						Color::RGB(225, 100, 100)
+					)?;
 
-				canvas.copy_ex(
-					&texture,
-					None,
-					Some(Rect::new(
-						x + (fort::SIZE / 2.0 * WORLD_TO_PIXELS) as i32,
-						y + ((fort::SIZE / 2.0 - 0.25) * WORLD_TO_PIXELS) as i32,
-						(distance * WORLD_TO_PIXELS) as u32,
-						(fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32
-					)),
-					angle,
-					Some(Point::new(0, (0.25 * WORLD_TO_PIXELS) as i32)),
-					false,
-					false
-				)?;
+					let mut texture = surface.as_texture(&texture_creator).unwrap();
+					texture.set_blend_mode(BlendMode::Blend);
+					texture.set_alpha_mod(125);
+
+					canvas.copy_ex(
+						&texture,
+						None,
+						Some(Rect::new(
+							x + (fort::SIZE / 2.0 * WORLD_TO_PIXELS) as i32,
+							y + ((fort::SIZE / 2.0 - 0.25) * WORLD_TO_PIXELS) as i32,
+							(distance * WORLD_TO_PIXELS) as u32,
+							(fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32
+						)),
+						angle,
+						Some(Point::new(0, (0.25 * WORLD_TO_PIXELS) as i32)),
+						false,
+						false
+					)?;
+				}
 			}
 		}
 
@@ -460,7 +488,7 @@ fn create_game() -> Arc<Mutex<Network>> {
 }
 
 fn connect_to_game() -> Arc<Mutex<Network>> {
-	let mut response = String::from("10.0.0.65:8080");
+	let /*mut*/ response = String::from("10.0.0.65:8080");
 
 	//println!("What is one of the player's IP address?");
 
