@@ -4,8 +4,8 @@ use sdl2::render::Canvas;
 use sdl2::video::Window;
 
 use crate::camera::{
-	worldspace_to_screenspace,
-	WORLD_TO_PIXELS
+	WORLD_TO_PIXELS,
+	worldspace_to_screenspace
 };
 
 pub struct Boundary {

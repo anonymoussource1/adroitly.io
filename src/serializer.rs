@@ -6,7 +6,8 @@ pub enum Message {
 	Pos(f64, f64),
 	Bullet(f64, f64, f64, f64, u128),
 	Death,
-	Fort(f64, f64)
+	Fort(f64, f64),
+	FortConnection(f64, f64, f64, f64)
 }
 
 impl Message {
@@ -64,6 +65,17 @@ impl Message {
 
 				fort
 			}
+			Self::FortConnection(x1, y1, x2, y2) => {
+				let mut fort_connection = Vec::with_capacity(33);
+
+				fort_connection.push(6);
+				fort_connection.append(&mut Vec::from(x1.to_be_bytes()));
+				fort_connection.append(&mut Vec::from(y1.to_be_bytes()));
+				fort_connection.append(&mut Vec::from(x2.to_be_bytes()));
+				fort_connection.append(&mut Vec::from(y2.to_be_bytes()));
+
+				fort_connection
+			}
 		}
 	}
 
@@ -109,6 +121,14 @@ impl Message {
 
 				Some(Self::Fort(x, y))
 			}
+			6 => {
+				let x1 = f64::from_be_bytes(bytes[1..=8].try_into().expect("Slice is incorrect length"));
+				let y1 = f64::from_be_bytes(bytes[9..=16].try_into().expect("Slice is incorrect length"));
+				let x2 = f64::from_be_bytes(bytes[17..=24].try_into().expect("Slice is incorrect length"));
+				let y2 = f64::from_be_bytes(bytes[25..=32].try_into().expect("Slice is incorrect length"));
+
+				Some(Self::FortConnection(x1, y1, x2, y2))
+			}
 			_ => {
 				eprintln!("Recieved invalid message: {:?}", bytes);
 				None
@@ -123,7 +143,8 @@ impl Message {
 			Self::Pos(..) => 17,
 			Self::Bullet(..) => 49,
 			Self::Death => 1,
-			Self::Fort(..) => 17
+			Self::Fort(..) => 17,
+			Self::FortConnection(..) => 33
 		}
 	}
 }
@@ -145,7 +166,8 @@ impl fmt::Display for Message {
 			Self::Pos(x, y) => write!(f, "POS {} {}", x, y),
 			Self::Bullet(x, y, dx, dy, age) => write!(f, "BULLET {} {} {} {} {}", x, y, dx, dy, age),
 			Self::Death => write!(f, "DEATH"),
-			Self::Fort(x, y) => write!(f, "FORT {} {}", x, y)
+			Self::Fort(x, y) => write!(f, "FORT {} {}", x, y),
+			Self::FortConnection(x1, y1, x2, y2) => write!(f, "FORT_CONNECTION {} {} {} {}", x1, y1, x2, y2)
 		}
 	}
 }

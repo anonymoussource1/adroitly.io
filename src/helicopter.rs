@@ -8,8 +8,8 @@ use sdl2::video::Window;
 
 use crate::boundary::Boundary;
 use crate::camera::{
-	worldspace_to_screenspace,
-	WORLD_TO_PIXELS
+	WORLD_TO_PIXELS,
+	worldspace_to_screenspace
 };
 use crate::keyboard::Keyboard;
 

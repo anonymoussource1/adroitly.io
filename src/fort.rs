@@ -11,8 +11,8 @@ use sdl2::surface::Surface;
 use sdl2::video::Window;
 
 use crate::camera::{
-	worldspace_to_screenspace,
-	WORLD_TO_PIXELS
+	WORLD_TO_PIXELS,
+	worldspace_to_screenspace
 };
 
 pub const SIZE: f64 = 0.75;

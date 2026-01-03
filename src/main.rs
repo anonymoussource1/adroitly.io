@@ -29,7 +29,7 @@ use sdl2::pixels::{
 };
 use sdl2::rect::{
 	Point,
-	Rect
+	Rect,
 };
 use sdl2::render::BlendMode;
 use sdl2::surface::Surface;
@@ -125,13 +125,7 @@ fn main() -> Result<(), String> {
 			network.send_bullet(&bullet);
 
 			let ip = network.ip.clone();
-			if let Some(bullets) = network.bullets.get_mut(&ip) {
-				bullets.lock().expect("Failed to acquire lock on bullets").push(bullet);
-			} else {
-				let bullets = Arc::new(Mutex::new(vec![bullet]));
-
-				network.bullets.insert(ip, bullets);
-			}
+			network.bullets.get_mut(&ip).unwrap().lock().expect("Failed to acquire lock on bullets").push(bullet);
 
 			shoot_cooldown = Duration::from_millis(250);
 		}
@@ -139,56 +133,58 @@ fn main() -> Result<(), String> {
 		if keyboard.is_space_down && !heli.is_dead {
 			let margin = (helicopter::SIZE - fort::SIZE) / 2.0;
 			let fort = Fort::new(heli.x + margin, heli.y + margin);
-
 			let ip = network.ip.clone();
-			if let Some(forts) = network.forts.get_mut(&ip)
-				&& !forts.lock().expect("Failed to acquire lock on forts").is_empty()
-			{
-				let mut forts = forts.lock().expect("Failed to acquire lock on forts");
+			let mut forts = network.forts.get(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
 
-				if let Some((index, other)) = forts.iter().enumerate().find(|&other| {
-					let other = other.1;
-					let distance = ((fort.y - other.y) * (fort.y - other.y) + (fort.x - other.x) * (fort.x - other.x)).sqrt().abs();
+			if let Some((index, other)) = forts.iter().enumerate().find(|&other| {
+				let other = other.1;
+				let distance = ((fort.y - other.y) * (fort.y - other.y) + (fort.x - other.x) * (fort.x - other.x)).sqrt().abs();
 
-					distance < 3.0
-				}) {
-					let curr_fort = forts.get(curr_fort_index).unwrap();
-					let is_valid_connection = !curr_fort.connections.contains(&(other.x, other.y)) && !other.connections.contains(&(curr_fort.x, curr_fort.y));
-					let other = (other.x, other.y);
+				distance < 3.0
+			}) {
+				let curr_fort = forts.get(curr_fort_index).unwrap();
+				let is_valid_connection = !curr_fort.connections.contains(&(other.x, other.y)) && !other.connections.contains(&(curr_fort.x, curr_fort.y));
+				let other = (other.x, other.y);
+				let curr_fort = forts.get_mut(curr_fort_index).unwrap();
+
+				if other.0 != curr_fort.x || other.1 != curr_fort.y {
+					curr_fort_index = index;
+
+					let distance = ((curr_fort.y - other.1) * (curr_fort.y - other.1) + (curr_fort.x - other.0) * (curr_fort.x - other.0)).sqrt().abs();
+					if distance < 15.0 && is_valid_connection {
+						curr_fort.connections.push((other.0, other.1));
+						let curr = (curr_fort.x, curr_fort.y);
+						drop(forts);
+						network.send_fort_connection(((curr.0, curr.1), (other.0, other.1)));
+					}
+				}
+			} else if !forts.is_empty() {
+				let curr_fort = forts.get(curr_fort_index).unwrap();
+				let distance = ((heli.y - curr_fort.y) * (heli.y - curr_fort.y) + (heli.x - curr_fort.x) * (heli.x - curr_fort.x)).sqrt().abs();
+
+				if distance > 3.0 {
+					drop(forts);
+					network.send_fort(&fort);
+					let mut forts = network.forts.get_mut(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
 					let curr_fort = forts.get_mut(curr_fort_index).unwrap();
 
-					if other.0 != curr_fort.x || other.1 != curr_fort.y {
-						curr_fort_index = index;
-
-						let distance = ((curr_fort.y - other.1) * (curr_fort.y - other.1) + (curr_fort.x - other.0) * (curr_fort.x - other.0)).sqrt().abs();
-						if distance < 15.0 && is_valid_connection {
-							curr_fort.connections.push((other.0, other.1));
-						}
-					}
-				} else {
-					let curr_fort = forts.get(curr_fort_index).unwrap();
-					let distance = ((heli.y - curr_fort.y) * (heli.y - curr_fort.y) + (heli.x - curr_fort.x) * (heli.x - curr_fort.x)).sqrt().abs();
-
-					if distance > 3.0 {
+					if distance < 15.0 {
+						curr_fort.connections.push((fort.x, fort.y));
+						let curr = (curr_fort.x, curr_fort.y);
+						let other = (fort.x, fort.y);
+						forts.push(fort);
+						curr_fort_index = forts.len() - 1;
 						drop(forts);
-						network.send_fort(&fort);
-						let mut forts = network.forts.get_mut(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
-
-						if distance < 15.0 {
-							let curr_fort = forts.get_mut(curr_fort_index).unwrap();
-							curr_fort.connections.push((fort.x, fort.y));
-							forts.push(fort);
-						} else {
-							forts.push(fort);
-						}
-
+						network.send_fort_connection(((curr.0, curr.1), (other.0, other.1)));
+					} else {
+						forts.push(fort);
 						curr_fort_index = forts.len() - 1;
 					}
 				}
 			} else {
+				drop(forts);
 				network.send_fort(&fort);
-				let forts = Arc::new(Mutex::new(vec![fort]));
-				network.forts.insert(ip.clone(), forts);
+				network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on forts").push(fort);
 			}
 
 			keyboard.is_space_down = false;
@@ -202,6 +198,7 @@ fn main() -> Result<(), String> {
 			shoot_cooldown = Duration::ZERO;
 		}
 
+		// Can this...
 		for bullets in network.bullets.values_mut() {
 			let mut bullets = bullets.lock().expect("Failed to acquire lock on bullets");
 			for bullet in bullets.iter_mut() {
@@ -210,57 +207,76 @@ fn main() -> Result<(), String> {
 			bullets.retain(|bullet| bullet.age < bullet::LIFESPAN);
 		}
 
+		let old_pos = (heli.x, heli.y);
 		if !heli.is_dead {
-			let old_pos = (heli.x, heli.y);
 			heli.update(&delta_time, &keyboard, &boundaries);
 
-			for (ip, bullets) in network.bullets.iter() {
+			for (ip, forts) in network.forts.iter() {
 				if ip == &network.ip {
-					if let Some(forts) = network.forts.get(ip) {
-						let mut forts = forts.lock().expect("Failed to acquire lock on forts");
-						for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
-							let mut removed_forts = Vec::new();
-							let x = bullet.x - bullet::DIAMETER / 2.0;
-							let y = bullet.y - bullet::DIAMETER / 2.0;
-							let len = forts.len();
-
-							forts.retain(|fort| {
-								if x < fort.x + helicopter::SIZE && x + bullet::DIAMETER > fort.x && y < fort.y + helicopter::SIZE && y + bullet::DIAMETER > fort.y {
-									removed_forts.push((fort.x, fort.y));
-									false
-								} else {
-									true
-								}
-							});
-							forts.iter_mut().for_each(|fort| fort.connections.retain(|connection| !removed_forts.contains(connection)));
-
-							if curr_fort_index != 0 {
-								curr_fort_index = curr_fort_index - (len - forts.len());
-							}
-						}
-					} else {
-					}
 					continue;
 				}
-				for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
-					let x = bullet.x - bullet::DIAMETER / 2.0;
-					let y = bullet.y - bullet::DIAMETER / 2.0;
+				for fort in forts.lock().expect("Failed to acquire lock on forts").iter() {
+					for connection in fort.connections.iter() {
+						let connection = ((fort.x, fort.y), (connection.0, connection.1));
+						let primary = ((heli.x, heli.y), (heli.x + helicopter::SIZE, heli.y));
+						let secondary = ((heli.x + helicopter::SIZE, heli.y), (heli.x, heli.y + helicopter::SIZE));
+						let tertiary = ((heli.x + helicopter::SIZE, heli.y + helicopter::SIZE), (heli.x, heli.y + helicopter::SIZE));
+						let quaternary = ((heli.x, heli.y + helicopter::SIZE), (heli.x, heli.y));
 
-					if x < heli.x + helicopter::SIZE && x + bullet::DIAMETER > heli.x && y < heli.y + helicopter::SIZE && y + bullet::DIAMETER > heli.y {
-						let spawn = helicopter::find_valid_spawn(&boundaries);
+						if do_segments_intersect_with_thickness(connection, primary, 0.5) || do_segments_intersect_with_thickness(connection, secondary, 0.5) || do_segments_intersect_with_thickness(connection, tertiary, 0.5) || do_segments_intersect_with_thickness(connection, quaternary, 0.5) {
+							let spawn = helicopter::find_valid_spawn(&boundaries);
 
-						heli.x = spawn.0;
-						heli.y = spawn.1;
-						death_timer = Duration::from_secs(5);
+							heli.x = spawn.0;
+							heli.y = spawn.1;
+							death_timer = Duration::from_secs(5);
+						}
 					}
 				}
 			}
+		}
 
-			// END OF PHYSICS
-
-			if old_pos != (heli.x, heli.y) {
-				network.send_pos(&heli);
+		let mut removed_forts = Vec::new();
+		for (ip, bullets) in network.bullets.iter() {
+			if ip == &network.ip {
+				continue;
 			}
+			for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
+				// ..And this be combined?
+				let x = bullet.x - bullet::DIAMETER / 2.0;
+				let y = bullet.y - bullet::DIAMETER / 2.0;
+
+				if !heli.is_dead && x < heli.x + helicopter::SIZE && x + bullet::DIAMETER > heli.x && y < heli.y + helicopter::SIZE && y + bullet::DIAMETER > heli.y {
+					let spawn = helicopter::find_valid_spawn(&boundaries);
+
+					heli.x = spawn.0;
+					heli.y = spawn.1;
+					death_timer = Duration::from_secs(5);
+				}
+
+				let mut forts = network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on forts");
+				let prev_len = forts.len();
+
+				forts.retain(|fort| {
+					if x < fort.x + helicopter::SIZE && x + bullet::DIAMETER > fort.x && y < fort.y + helicopter::SIZE && y + bullet::DIAMETER > fort.y {
+						removed_forts.push((fort.x, fort.y));
+						false
+					} else {
+						true
+					}
+				});
+				forts.iter_mut().for_each(|fort| fort.connections.retain(|connection| !removed_forts.contains(connection)));
+
+				if curr_fort_index != 0 {
+					curr_fort_index = curr_fort_index - (prev_len - forts.len());
+				}
+			}
+		}
+		removed_forts.iter().for_each(|fort| network.send_fort(&Fort::new(fort.0, fort.1)));
+
+		// END OF PHYSICS
+
+		if old_pos != (heli.x, heli.y) {
+			network.send_pos(&heli);
 		}
 
 		if death_timer == Duration::from_secs(5) {
@@ -282,7 +298,7 @@ fn main() -> Result<(), String> {
 		canvas.set_draw_color(Color::RGB(20, 20, 20));
 		canvas.clear();
 
-		let focus = (heli.x, heli.y);
+		let focus = (heli.x + helicopter::SIZE / 2.0, heli.y + helicopter::SIZE / 2.0);
 
 		canvas.set_draw_color(Color::RGB(45, 45, 45));
 		for r in (-50..=50).step_by(5) {
@@ -353,46 +369,42 @@ fn main() -> Result<(), String> {
 			}
 		}
 
-		if let Some(forts) = network.forts.get(&network.ip) {
-			let heli = heli_mutex.lock().expect("Failed to acquire lock on heli");
-			let forts = forts.lock().expect("Failed to acquire lock on fort");
+		let heli = heli_mutex.lock().expect("Failed to acquire lock on heli");
 
-			if !forts.is_empty() {
-				let fort = forts.get(curr_fort_index).unwrap();
-				let (x, y) = worldspace_to_screenspace(focus, (fort.x, fort.y), canvas.window().size());
+		if let Some(fort) = network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on fort").get(curr_fort_index) {
+			let (x, y) = worldspace_to_screenspace(focus, (fort.x, fort.y), canvas.window().size());
 
-				let distance = ((heli.y - fort.y) * (heli.y - fort.y) + (heli.x - fort.x) * (heli.x - fort.x)).sqrt().abs();
-				if distance as u32 != 0 && distance < 15.0 {
-					let temp_angle = ((heli.x - fort.x) / distance).acos() * (180.0 / std::f64::consts::PI);
-					let angle = if (heli.y - fort.y) < 0.0 { -temp_angle } else { temp_angle };
+			let distance = ((heli.y - fort.y) * (heli.y - fort.y) + (heli.x - fort.x) * (heli.x - fort.x)).sqrt().abs();
+			if distance as u32 != 0 && distance < 15.0 {
+				let temp_angle = ((heli.x - fort.x) / distance).acos() * (180.0 / std::f64::consts::PI);
+				let angle = if (heli.y - fort.y) < 0.0 { -temp_angle } else { temp_angle };
 
-					let texture_creator = canvas.texture_creator();
-					let mut surface = Surface::new((distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32, PixelFormatEnum::RGB24)?;
+				let texture_creator = canvas.texture_creator();
+				let mut surface = Surface::new((distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32, PixelFormatEnum::RGB24)?;
 
-					surface.fill_rect(
-						Rect::new(0, 0, (distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32),
-						Color::RGB(225, 100, 100)
-					)?;
+				surface.fill_rect(
+					Rect::new(0, 0, (distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32),
+					Color::RGB(225, 100, 100)
+				)?;
 
-					let mut texture = surface.as_texture(&texture_creator).unwrap();
-					texture.set_blend_mode(BlendMode::Blend);
-					texture.set_alpha_mod(125);
+				let mut texture = surface.as_texture(&texture_creator).unwrap();
+				texture.set_blend_mode(BlendMode::Blend);
+				texture.set_alpha_mod(125);
 
-					canvas.copy_ex(
-						&texture,
-						None,
-						Some(Rect::new(
-							x + (fort::SIZE / 2.0 * WORLD_TO_PIXELS) as i32,
-							y + ((fort::SIZE / 2.0 - 0.25) * WORLD_TO_PIXELS) as i32,
-							(distance * WORLD_TO_PIXELS) as u32,
-							(fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32
-						)),
-						angle,
-						Some(Point::new(0, (0.25 * WORLD_TO_PIXELS) as i32)),
-						false,
-						false
-					)?;
-				}
+				canvas.copy_ex(
+					&texture,
+					None,
+					Some(Rect::new(
+						x + (fort::SIZE / 2.0 * WORLD_TO_PIXELS) as i32,
+						y + ((fort::SIZE / 2.0 - 0.25) * WORLD_TO_PIXELS) as i32,
+						(distance * WORLD_TO_PIXELS) as u32,
+						(fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32
+					)),
+					angle,
+					Some(Point::new(0, (0.25 * WORLD_TO_PIXELS) as i32)),
+					false,
+					false
+				)?;
 			}
 		}
 
@@ -576,4 +588,18 @@ fn get_player_ip() -> String {
 
 fn get_current_time() -> Duration {
 	SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards and we're all doomed anyway")
+}
+
+// Black magic I found online
+fn is_counter_clockwise(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> bool {
+	(c.1 - a.1) * (b.0 - a.0) > (b.1 - a.1) * (c.0 - a.0)
+}
+
+fn do_segments_intersect(a: ((f64, f64), (f64, f64)), b: ((f64, f64), (f64, f64))) -> bool {
+	is_counter_clockwise(a.0, b.0, b.1) != is_counter_clockwise(a.1, b.0, b.1) && is_counter_clockwise(a.0, a.1, b.0) != is_counter_clockwise(a.0, a.1, b.1)
+}
+
+fn do_segments_intersect_with_thickness(a: ((f64, f64), (f64, f64)), b: ((f64, f64), (f64, f64)), thickness: f64) -> bool {
+	let thick_a = ((a.0.0, a.0.1 + thickness), (a.1.0, a.1.1 + thickness)); 
+	do_segments_intersect(a, b) || do_segments_intersect(thick_a, b)
 }

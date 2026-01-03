@@ -28,13 +28,18 @@ pub struct Network {
 
 impl Network {
 	pub fn new(ip: &str) -> Self {
-		Network {
+		let mut network = Self {
 			players: HashMap::new(),
 			bullets: HashMap::new(),
 			helis: HashMap::new(),
 			forts: HashMap::new(),
 			ip: ip.to_string()
-		}
+		};
+
+		network.bullets.insert(String::from(ip), Arc::new(Mutex::new(Vec::new())));
+		network.forts.insert(String::from(ip), Arc::new(Mutex::new(Vec::new())));
+
+		network
 	}
 
 	pub fn send_bullet(&mut self, bullet: &Bullet) {
@@ -68,6 +73,13 @@ impl Network {
 		let fort = Message::Fort(fort.x, fort.y);
 		for (_, player) in self.players.iter_mut() {
 			_ = player.write_all(&fort.serialize());
+		}
+	}
+
+	pub fn send_fort_connection(&mut self, connection: ((f64, f64), (f64, f64))) {
+		let connection = Message::FortConnection(connection.0.0, connection.0.1, connection.1.0, connection.1.1);
+		for (_, player) in self.players.iter_mut() {
+			_ = player.write_all(&connection.serialize());
 		}
 	}
 
@@ -203,7 +215,19 @@ fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets
 			heli.is_dead = !heli.is_dead;
 		}
 		Message::Fort(x, y) => {
-			forts.lock().expect("Failed to acquire lock on forts").push(Fort::new(x, y));
+			let mut forts = forts.lock().expect("Failed to acquire lock on forts");
+			if let Some((index, _)) = forts.iter().enumerate().find(|fort| fort.1.x == x && fort.1.y == y) {
+				forts.remove(index);
+				forts.iter_mut().for_each(|fort| fort.connections.retain(|connection| !(connection.0 == x && connection.1 == y)));
+			} else {
+				forts.push(Fort::new(x, y));
+			}
+		}
+		Message::FortConnection(x1, y1, x2, y2) => {
+			let mut forts = forts.lock().expect("Failed to acquire lock on forts");
+			let fort1 = forts.iter_mut().find(|fort| fort.x == x1 && fort.y == y1).unwrap();
+
+			fort1.connections.push((x2, y2));
 		}
 		_ => panic!("Recieved unsupported message during game")
 	}
