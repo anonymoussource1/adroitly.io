@@ -1,2 +1,4 @@
 # Known Bugs
 1. Shadow line and actual line aren't the same
+2. Intersect with thickness function doesn't work properly with vertical lines
+3. Can spawn bullets inside fort connection

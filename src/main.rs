@@ -29,7 +29,7 @@ use sdl2::pixels::{
 };
 use sdl2::rect::{
 	Point,
-	Rect,
+	Rect
 };
 use sdl2::render::BlendMode;
 use sdl2::surface::Surface;
@@ -117,8 +117,8 @@ fn main() -> Result<(), String> {
 			let bullet = Bullet::new(
 				heli.x + helicopter::SIZE / 2.0,
 				heli.y + helicopter::SIZE / 2.0,
-				new_x / (new_x.powi(2) + new_y.powi(2)).sqrt(),
-				new_y / (new_x.powi(2) + new_y.powi(2)).sqrt(),
+				new_x / (new_x * new_x + new_y * new_y).sqrt(),
+				new_y / (new_x * new_x + new_y * new_y).sqrt(),
 				0
 			);
 
@@ -223,7 +223,11 @@ fn main() -> Result<(), String> {
 						let tertiary = ((heli.x + helicopter::SIZE, heli.y + helicopter::SIZE), (heli.x, heli.y + helicopter::SIZE));
 						let quaternary = ((heli.x, heli.y + helicopter::SIZE), (heli.x, heli.y));
 
-						if do_segments_intersect_with_thickness(connection, primary, 0.5) || do_segments_intersect_with_thickness(connection, secondary, 0.5) || do_segments_intersect_with_thickness(connection, tertiary, 0.5) || do_segments_intersect_with_thickness(connection, quaternary, 0.5) {
+						if do_segments_intersect_with_thickness(connection, primary, 0.5)
+							|| do_segments_intersect_with_thickness(connection, secondary, 0.5)
+							|| do_segments_intersect_with_thickness(connection, tertiary, 0.5)
+							|| do_segments_intersect_with_thickness(connection, quaternary, 0.5)
+						{
 							let spawn = helicopter::find_valid_spawn(&boundaries);
 
 							heli.x = spawn.0;
@@ -237,37 +241,72 @@ fn main() -> Result<(), String> {
 
 		let mut removed_forts = Vec::new();
 		for (ip, bullets) in network.bullets.iter() {
-			if ip == &network.ip {
-				continue;
-			}
-			for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
-				// ..And this be combined?
+			for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter_mut() {
 				let x = bullet.x - bullet::DIAMETER / 2.0;
 				let y = bullet.y - bullet::DIAMETER / 2.0;
 
-				if !heli.is_dead && x < heli.x + helicopter::SIZE && x + bullet::DIAMETER > heli.x && y < heli.y + helicopter::SIZE && y + bullet::DIAMETER > heli.y {
-					let spawn = helicopter::find_valid_spawn(&boundaries);
+				if ip != &network.ip {
+					// ..And this be combined?
+					if !heli.is_dead && x < heli.x + helicopter::SIZE && x + bullet::DIAMETER > heli.x && y < heli.y + helicopter::SIZE && y + bullet::DIAMETER > heli.y {
+						let spawn = helicopter::find_valid_spawn(&boundaries);
 
-					heli.x = spawn.0;
-					heli.y = spawn.1;
-					death_timer = Duration::from_secs(5);
+						heli.x = spawn.0;
+						heli.y = spawn.1;
+						death_timer = Duration::from_secs(5);
+					}
+
+					let mut forts = network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on forts");
+					let prev_len = forts.len();
+
+					forts.retain(|fort| {
+						if x < fort.x + helicopter::SIZE && x + bullet::DIAMETER > fort.x && y < fort.y + helicopter::SIZE && y + bullet::DIAMETER > fort.y {
+							removed_forts.push((fort.x, fort.y));
+							false
+						} else {
+							true
+						}
+					});
+					forts.iter_mut().for_each(|fort| fort.connections.retain(|connection| !removed_forts.contains(connection)));
+
+					if curr_fort_index != 0 {
+						curr_fort_index = curr_fort_index - (prev_len - forts.len());
+					}
 				}
 
-				let mut forts = network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on forts");
-				let prev_len = forts.len();
-
-				forts.retain(|fort| {
-					if x < fort.x + helicopter::SIZE && x + bullet::DIAMETER > fort.x && y < fort.y + helicopter::SIZE && y + bullet::DIAMETER > fort.y {
-						removed_forts.push((fort.x, fort.y));
-						false
-					} else {
-						true
+				for (fort_ip, forts) in network.forts.iter() {
+					if ip == fort_ip {
+						continue;
 					}
-				});
-				forts.iter_mut().for_each(|fort| fort.connections.retain(|connection| !removed_forts.contains(connection)));
 
-				if curr_fort_index != 0 {
-					curr_fort_index = curr_fort_index - (prev_len - forts.len());
+					for fort in forts.lock().expect("Failed to acquire lock on fort").iter() {
+						for connection in fort.connections.iter() {
+							let connection = ((fort.x, fort.y), (connection.0, connection.1));
+							let primary = ((x, y), (x + bullet::DIAMETER, y));
+							let secondary = ((x + bullet::DIAMETER, y), (x, y + bullet::DIAMETER));
+							let tertiary = ((x + bullet::DIAMETER, y + bullet::DIAMETER), (x, y + bullet::DIAMETER));
+							let quaternary = ((x, y + bullet::DIAMETER), (x, y));
+							let normals = get_normals(connection.0, connection.1);
+
+							if do_segments_intersect_with_thickness(connection, primary, 0.5)
+								|| do_segments_intersect_with_thickness(connection, secondary, 0.5)
+								|| do_segments_intersect_with_thickness(connection, tertiary, 0.5)
+								|| do_segments_intersect_with_thickness(connection, quaternary, 0.5) {
+
+								let temp_angle = (normals.0.1 / normals.0.0).atan();
+								let angle = if normals.0.0 < 0.0 { temp_angle + std::f64::consts::PI } else { temp_angle };
+								let rotated_x = bullet.dx * (-angle).cos() - bullet.dy * (-angle).sin();
+								let rotated_y = bullet.dx * (-angle).sin() + bullet.dy * (-angle).cos();
+								let reflected_x = -rotated_x;
+								let reflected_y = rotated_y;
+								let final_x = reflected_x * angle.cos() - reflected_y * angle.sin();
+								let final_y = reflected_x * angle.sin() + reflected_y * angle.cos();
+
+								bullet.dx = final_x;
+								bullet.dy = final_y;
+							}
+						}
+					}
+					
 				}
 			}
 		}
@@ -590,7 +629,7 @@ fn get_current_time() -> Duration {
 	SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards and we're all doomed anyway")
 }
 
-// Black magic I found online
+// Black magic I found on the internets
 fn is_counter_clockwise(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> bool {
 	(c.1 - a.1) * (b.0 - a.0) > (b.1 - a.1) * (c.0 - a.0)
 }
@@ -600,6 +639,16 @@ fn do_segments_intersect(a: ((f64, f64), (f64, f64)), b: ((f64, f64), (f64, f64)
 }
 
 fn do_segments_intersect_with_thickness(a: ((f64, f64), (f64, f64)), b: ((f64, f64), (f64, f64)), thickness: f64) -> bool {
-	let thick_a = ((a.0.0, a.0.1 + thickness), (a.1.0, a.1.1 + thickness)); 
+	let thick_a = ((a.0.0, a.0.1 + thickness), (a.1.0, a.1.1 + thickness));
 	do_segments_intersect(a, b) || do_segments_intersect(thick_a, b)
+}
+
+fn get_normals(a: (f64, f64), b: (f64, f64)) -> ((f64, f64), (f64, f64)) {
+	// if dx == 0 then dy = 1
+	// if dy == 0 then dx = 1
+	// sqrt(dx^2 + dy^2) = 1
+	let dx = b.0 - a.0;
+	let dy = b.1 - a.1;
+	let length = (dx * dx + dy * dy).sqrt();
+	((-dy / length, dx / length), (dy / length, -dx / length))
 }
