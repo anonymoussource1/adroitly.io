@@ -68,6 +68,10 @@ impl Message {
 			Self::FortConnection(x1, y1, x2, y2) => {
 				let mut fort_connection = Vec::with_capacity(33);
 
+				if x1.to_be_bytes().len() != 8 || y1.to_be_bytes().len() != 8 || x2.to_be_bytes().len() != 8 || y2.to_be_bytes().len() != 8 {
+					panic!("NOOOOOOOOOOOO");
+				}
+
 				fort_connection.push(6);
 				fort_connection.append(&mut Vec::from(x1.to_be_bytes()));
 				fort_connection.append(&mut Vec::from(y1.to_be_bytes()));

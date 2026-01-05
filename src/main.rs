@@ -93,13 +93,14 @@ fn main() -> Result<(), String> {
 
 	let mut shoot_cooldown = Duration::ZERO;
 	let mut death_timer = Duration::ZERO;
-	let mut last_time_stamp = get_current_time();
+	let mut last_start = get_current_time();
 	let mut curr_fort_index = 0;
+
 	'main: loop {
 		let start = get_current_time();
 		let mut network = network.lock().expect("Failed to acquire lock on network");
 		let mut heli = heli_mutex.lock().expect("Failed to acquire lock on heli");
-		let delta_time = start - last_time_stamp;
+		let delta_time = start - last_start;
 
 		get_input(&mut events, &mut keyboard);
 
@@ -455,10 +456,11 @@ fn main() -> Result<(), String> {
 
 		drop(network);
 
-		last_time_stamp = get_current_time();
-		if last_time_stamp - start <= Duration::from_millis(1000 / 60) {
-			thread::sleep(Duration::from_millis(1000 / 60) - (last_time_stamp - start));
+		let time_elapsed_so_far = get_current_time();
+		if time_elapsed_so_far - start <= Duration::from_millis((1000.0 / 60.0) as u64) {
+			thread::sleep(Duration::from_millis((1000.0 / 60.0) as u64) - (time_elapsed_so_far - start));
 		}
+		last_start = start;
 	}
 
 	Ok(())

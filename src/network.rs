@@ -12,6 +12,7 @@ use std::sync::{
 	Mutex
 };
 use std::thread;
+use std::time::Duration;
 
 use crate::bullet::Bullet;
 use crate::fort::Fort;
@@ -139,13 +140,24 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 							stream.write_all(&pos.serialize()).expect("Failed to write to player");
 						}
 
-						// ?
-						if let Some(bullets) = network.bullets.get(&network.ip) {
-							for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter() {
-								let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy, bullet.age.as_millis());
-								stream.write_all(&bullet.serialize()).expect("Failed to write to player");
+						for bullet in network.bullets.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on bullets").iter() {
+							let bullet = Message::Bullet(bullet.x, bullet.y, bullet.dx, bullet.dy, bullet.age.as_millis());
+							stream.write_all(&bullet.serialize()).expect("Failed to write to player");
+						}
+
+						for fort in network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on bullets").iter() {
+							let fort = Message::Fort(fort.x, fort.y);
+							stream.write_all(&fort.serialize()).expect("Failed to write to player");
+							thread::sleep(Duration::from_millis(1));
+						}
+
+						for fort in network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on bullets").iter() {
+							for connection in fort.connections.iter() {
+								let fort_connection = Message::FortConnection(fort.x, fort.y, connection.0, connection.1);
+								stream.write_all(&fort_connection.serialize()).expect("Failed to write to player");
+								thread::sleep(Duration::from_millis(1));
 							}
-						};
+						}
 
 						ip_thread = network.add_and_listen(ip.clone(), stream);
 					}
@@ -182,8 +194,14 @@ pub fn handle_player(mut player: TcpStream, heli: Arc<Mutex<Helicopter>>, bullet
 			}
 			Ok(bytes_read) => {
 				let mut start = 0;
+				/*println!("Full: {:?}", &buffer[..bytes_read]);
+				println!("Full Length: {}", bytes_read);*/
 				while start < bytes_read {
+					//println!("Raw Part: {:?}", &buffer[start..bytes_read]);
 					let Some(message) = Message::deserialize(&buffer[start..bytes_read]) else { continue };
+					/*println!("Raw Length: {}", message.len());
+					println!("Deserialize Part: {}", message);*/
+
 					start += message.len() as usize;
 
 					let bullets = bullets.clone();

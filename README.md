@@ -4,10 +4,13 @@
 I think I might finally finish a project!*
 
 #### Priorities
-1. ~~More robust spawning system (i.e. checking valid spawning spots) (ugggh i don't wanna >:( )~~
-    a. ~~I think i'll make "collides\_with\_walls) function and just check it after spawning, if so then restart spawn point~~
-2. Implement building
-3. ~~Change from handrolled solution to sdl2 rects and points~~ (BAD IDEA)
-4. Interesting idea, change to channels?
+1. ~~Implement building~~
+2. Clean up codebase (Extract out code that is repeated a lot)
+3. Interesting idea, change to channels?
+    a. Research if it's faster (which it probably is)
+4. Add health to forts
+5. Add shading to inside of fort
+6. Maps!
+
 
 \*Emphasis on *might*!
