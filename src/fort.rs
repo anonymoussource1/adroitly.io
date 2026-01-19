@@ -1,18 +1,15 @@
-use sdl2::pixels::{
-	Color,
-	PixelFormatEnum
-};
-use sdl2::rect::{
-	Point,
-	Rect
-};
+use sdl2::pixels::Color;
+use sdl2::rect::Rect;
 use sdl2::render::Canvas;
-use sdl2::surface::Surface;
 use sdl2::video::Window;
 
 use crate::camera::{
 	WORLD_TO_PIXELS,
 	worldspace_to_screenspace
+};
+use crate::shapes::{
+	Segment,
+	Vec2
 };
 
 pub const SIZE: f64 = 0.75;
@@ -42,40 +39,15 @@ impl Fort {
 		Ok(())
 	}
 
-	pub fn draw_line(&self, focus: (f64, f64), canvas: &mut Canvas<Window>, color: Color) -> Result<(), String> {
-		let (x, y) = worldspace_to_screenspace(focus, (self.x, self.y), canvas.window().size());
-
+	pub fn draw_connections(&self, focus: (f64, f64), canvas: &mut Canvas<Window>, color: Color) -> Result<(), String> {
 		for connection in &self.connections {
-			let distance = ((connection.1 - self.y) * (connection.1 - self.y) + (connection.0 - self.x) * (connection.0 - self.x)).sqrt().abs();
+			let segment = Segment::new(
+				Vec2::new(self.x + SIZE / 2.0, self.y + SIZE / 2.0),
+				Vec2::new(connection.0 + SIZE / 2.0, connection.1 + SIZE / 2.0),
+				CONNECTION_HEIGHT
+			);
 
-			if distance as u32 == 0 {
-				return Ok(())
-			}
-
-			let temp_angle = ((connection.0 - self.x) / distance).acos() * (180.0 / std::f64::consts::PI);
-			let angle = if (connection.1 - self.y) < 0.0 { -temp_angle } else { temp_angle };
-
-			let texture_creator = canvas.texture_creator();
-			let mut surface = Surface::new((distance * WORLD_TO_PIXELS) as u32, (CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32, PixelFormatEnum::RGB24)?;
-
-			surface.fill_rect(Rect::new(0, 0, (distance * WORLD_TO_PIXELS) as u32, (CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32), color)?;
-
-			let texture = surface.as_texture(&texture_creator).unwrap();
-
-			canvas.copy_ex(
-				&texture,
-				None,
-				Some(Rect::new(
-					x + (SIZE / 2.0 * WORLD_TO_PIXELS) as i32,
-					y + ((SIZE / 2.0 - 0.25) * WORLD_TO_PIXELS) as i32,
-					(distance * WORLD_TO_PIXELS) as u32,
-					(CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32
-				)),
-				angle,
-				Some(Point::new(0, (0.25 * WORLD_TO_PIXELS) as i32)),
-				false,
-				false
-			)?;
+			segment.draw(focus, canvas, color, 255)?;
 		}
 
 		Ok(())

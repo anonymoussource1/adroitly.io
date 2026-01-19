@@ -1,18 +1,15 @@
-use std::io::{
-	self,
-	Read,
-	Write
-};
-use std::net::TcpStream;
 use std::sync::{
 	Arc,
 	Mutex
 };
-use std::thread;
 use std::time::{
 	Duration,
 	SystemTime,
 	UNIX_EPOCH
+};
+use std::{
+	io,
+	thread
 };
 
 use sdl2;
@@ -23,16 +20,8 @@ use sdl2::mouse::{
 	MouseButton,
 	MouseState
 };
-use sdl2::pixels::{
-	Color,
-	PixelFormatEnum
-};
-use sdl2::rect::{
-	Point,
-	Rect
-};
-use sdl2::render::BlendMode;
-use sdl2::surface::Surface;
+use sdl2::pixels::Color;
+use sdl2::rect::Rect;
 
 mod boundary;
 mod bullet;
@@ -42,6 +31,7 @@ mod helicopter;
 mod keyboard;
 mod network;
 mod serializer;
+mod shapes;
 
 use boundary::Boundary;
 use bullet::Bullet;
@@ -54,7 +44,7 @@ use fort::Fort;
 use helicopter::Helicopter;
 use keyboard::Keyboard;
 use network::Network;
-use serializer::Message;
+use shapes::*;
 
 fn main() -> Result<(), String> {
 	let sdl2 = sdl2::init()?;
@@ -131,6 +121,7 @@ fn main() -> Result<(), String> {
 			shoot_cooldown = Duration::from_millis(250);
 		}
 
+		// Refactor because I have no idea what's happening
 		if keyboard.is_space_down && !heli.is_dead {
 			let margin = (helicopter::SIZE - fort::SIZE) / 2.0;
 			let fort = Fort::new(heli.x + margin, heli.y + margin);
@@ -211,6 +202,7 @@ fn main() -> Result<(), String> {
 		let old_pos = (heli.x, heli.y);
 		if !heli.is_dead {
 			heli.update(&delta_time, &keyboard, &boundaries);
+			let heli_bounds = Rectangle::new(heli.x, heli.y, helicopter::SIZE, helicopter::SIZE);
 
 			for (ip, forts) in network.forts.iter() {
 				if ip == &network.ip {
@@ -218,17 +210,13 @@ fn main() -> Result<(), String> {
 				}
 				for fort in forts.lock().expect("Failed to acquire lock on forts").iter() {
 					for connection in fort.connections.iter() {
-						let connection = ((fort.x, fort.y), (connection.0, connection.1));
-						let primary = ((heli.x, heli.y), (heli.x + helicopter::SIZE, heli.y));
-						let secondary = ((heli.x + helicopter::SIZE, heli.y), (heli.x, heli.y + helicopter::SIZE));
-						let tertiary = ((heli.x + helicopter::SIZE, heli.y + helicopter::SIZE), (heli.x, heli.y + helicopter::SIZE));
-						let quaternary = ((heli.x, heli.y + helicopter::SIZE), (heli.x, heli.y));
+						let connection = Segment::new(
+							Vec2::new(fort.x + fort::SIZE / 2.0, fort.y + fort::SIZE / 2.0),
+							Vec2::new(connection.0 + fort::SIZE / 2.0, connection.1 + fort::SIZE / 2.0),
+							0.5
+						);
 
-						if do_segments_intersect_with_thickness(connection, primary, 0.5)
-							|| do_segments_intersect_with_thickness(connection, secondary, 0.5)
-							|| do_segments_intersect_with_thickness(connection, tertiary, 0.5)
-							|| do_segments_intersect_with_thickness(connection, quaternary, 0.5)
-						{
+						if connection.intersects_with_rect(&heli_bounds) {
 							let spawn = helicopter::find_valid_spawn(&boundaries);
 
 							heli.x = spawn.0;
@@ -241,14 +229,16 @@ fn main() -> Result<(), String> {
 		}
 
 		let mut removed_forts = Vec::new();
+		let heli_bounds = Rectangle::new(heli.x, heli.y, helicopter::SIZE, helicopter::SIZE);
 		for (ip, bullets) in network.bullets.iter() {
 			for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter_mut() {
 				let x = bullet.x - bullet::DIAMETER / 2.0;
 				let y = bullet.y - bullet::DIAMETER / 2.0;
+				let bullet_bounds = Rectangle::new(x, y, bullet::DIAMETER, bullet::DIAMETER);
 
 				if ip != &network.ip {
 					// ..And this be combined?
-					if !heli.is_dead && x < heli.x + helicopter::SIZE && x + bullet::DIAMETER > heli.x && y < heli.y + helicopter::SIZE && y + bullet::DIAMETER > heli.y {
+					if !heli.is_dead && heli_bounds.intersects_with_rect(&bullet_bounds) {
 						let spawn = helicopter::find_valid_spawn(&boundaries);
 
 						heli.x = spawn.0;
@@ -260,7 +250,8 @@ fn main() -> Result<(), String> {
 					let prev_len = forts.len();
 
 					forts.retain(|fort| {
-						if x < fort.x + helicopter::SIZE && x + bullet::DIAMETER > fort.x && y < fort.y + helicopter::SIZE && y + bullet::DIAMETER > fort.y {
+						let fort_bounds = Rectangle::new(fort.x, fort.y, fort::SIZE, fort::SIZE);
+						if bullet_bounds.intersects_with_rect(&fort_bounds) {
 							removed_forts.push((fort.x, fort.y));
 							false
 						} else {
@@ -281,20 +272,16 @@ fn main() -> Result<(), String> {
 
 					for fort in forts.lock().expect("Failed to acquire lock on fort").iter() {
 						for connection in fort.connections.iter() {
-							let connection = ((fort.x, fort.y), (connection.0, connection.1));
-							let primary = ((x, y), (x + bullet::DIAMETER, y));
-							let secondary = ((x + bullet::DIAMETER, y), (x, y + bullet::DIAMETER));
-							let tertiary = ((x + bullet::DIAMETER, y + bullet::DIAMETER), (x, y + bullet::DIAMETER));
-							let quaternary = ((x, y + bullet::DIAMETER), (x, y));
-							let normals = get_normals(connection.0, connection.1);
+							let connection = Segment::new(
+								Vec2::new(fort.x + fort::SIZE / 2.0, fort.y + fort::SIZE / 2.0),
+								Vec2::new(connection.0 + fort::SIZE / 2.0, connection.1 + fort::SIZE / 2.0),
+								0.5
+							);
+							let normal = connection.get_normal();
 
-							if do_segments_intersect_with_thickness(connection, primary, 0.5)
-								|| do_segments_intersect_with_thickness(connection, secondary, 0.5)
-								|| do_segments_intersect_with_thickness(connection, tertiary, 0.5)
-								|| do_segments_intersect_with_thickness(connection, quaternary, 0.5) {
-
-								let temp_angle = (normals.0.1 / normals.0.0).atan();
-								let angle = if normals.0.0 < 0.0 { temp_angle + std::f64::consts::PI } else { temp_angle };
+							if connection.intersects_with_rect(&bullet_bounds) {
+								let temp_angle = (normal.y / normal.x).atan();
+								let angle = if normal.x < 0.0 { temp_angle + std::f64::consts::PI } else { temp_angle };
 								let rotated_x = bullet.dx * (-angle).cos() - bullet.dy * (-angle).sin();
 								let rotated_y = bullet.dx * (-angle).sin() + bullet.dy * (-angle).cos();
 								let reflected_x = -rotated_x;
@@ -307,7 +294,6 @@ fn main() -> Result<(), String> {
 							}
 						}
 					}
-					
 				}
 			}
 		}
@@ -401,7 +387,7 @@ fn main() -> Result<(), String> {
 			};
 
 			for fort in forts.lock().expect("Failed to acquire lock on forts").iter() {
-				fort.draw_line(focus, &mut canvas, color)?;
+				fort.draw_connections(focus, &mut canvas, color)?;
 			}
 
 			for fort in forts.lock().expect("Failed to acquire lock on forts").iter() {
@@ -412,39 +398,14 @@ fn main() -> Result<(), String> {
 		let heli = heli_mutex.lock().expect("Failed to acquire lock on heli");
 
 		if let Some(fort) = network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on fort").get(curr_fort_index) {
-			let (x, y) = worldspace_to_screenspace(focus, (fort.x, fort.y), canvas.window().size());
+			let heli_x = heli.x + helicopter::SIZE / 2.0;
+			let heli_y = heli.y + helicopter::SIZE / 2.0;
+			let fort_x = fort.x + fort::SIZE / 2.0;
+			let fort_y = fort.y + fort::SIZE / 2.0;
 
-			let distance = ((heli.y - fort.y) * (heli.y - fort.y) + (heli.x - fort.x) * (heli.x - fort.x)).sqrt().abs();
-			if distance as u32 != 0 && distance < 15.0 {
-				let temp_angle = ((heli.x - fort.x) / distance).acos() * (180.0 / std::f64::consts::PI);
-				let angle = if (heli.y - fort.y) < 0.0 { -temp_angle } else { temp_angle };
-
-				let texture_creator = canvas.texture_creator();
-				let mut surface = Surface::new((distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32, PixelFormatEnum::RGB24)?;
-
-				surface.fill_rect(
-					Rect::new(0, 0, (distance * WORLD_TO_PIXELS) as u32, (fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32),
-					Color::RGB(225, 100, 100)
-				)?;
-
-				let mut texture = surface.as_texture(&texture_creator).unwrap();
-				texture.set_blend_mode(BlendMode::Blend);
-				texture.set_alpha_mod(125);
-
-				canvas.copy_ex(
-					&texture,
-					None,
-					Some(Rect::new(
-						x + (fort::SIZE / 2.0 * WORLD_TO_PIXELS) as i32,
-						y + ((fort::SIZE / 2.0 - 0.25) * WORLD_TO_PIXELS) as i32,
-						(distance * WORLD_TO_PIXELS) as u32,
-						(fort::CONNECTION_HEIGHT * WORLD_TO_PIXELS) as u32
-					)),
-					angle,
-					Some(Point::new(0, (0.25 * WORLD_TO_PIXELS) as i32)),
-					false,
-					false
-				)?;
+			let segment = Segment::new(Vec2::new(fort_x, fort_y), Vec2::new(heli_x, heli_y), fort::CONNECTION_HEIGHT);
+			if segment.length() < 15.0 {
+				segment.draw(focus, &mut canvas, Color::RGB(255, 100, 100), 125)?;
 			}
 		}
 
@@ -523,134 +484,12 @@ fn prompt_for_network() -> Arc<Mutex<Network>> {
 	io::stdin().read_line(&mut response).expect("Failed to read input from player");
 
 	match response.as_str().trim() {
-		"1" => create_game(),
-		"2" => connect_to_game(),
+		"1" => network::create_game(),
+		"2" => network::connect_to_game(),
 		_ => panic!("Incorrect response!")
 	}
 }
 
-fn create_game() -> Arc<Mutex<Network>> {
-	//let ip = get_player_ip();
-	let ip = String::from("10.0.0.65:8080");
-	let network = Arc::new(Mutex::new(Network::new(&ip)));
-
-	let network_clone = network.clone();
-	thread::spawn(move || network::start_listening_for_connection(network_clone));
-
-	network
-}
-
-fn connect_to_game() -> Arc<Mutex<Network>> {
-	let /*mut*/ response = String::from("10.0.0.65:8080");
-
-	//println!("What is one of the player's IP address?");
-
-	//io::stdin().read_line(&mut response).expect("Failed to read input from
-	// player");
-
-	//response = response.as_str().trim().to_string();
-
-	let mut player = TcpStream::connect(&response).expect(&format!("Failed to connect to player at IP address \"{}\"", &response));
-
-	//let player_ip = get_player_ip();
-	let player_ip = String::from("10.0.0.65:8081");
-	let network = Arc::new(Mutex::new(Network::new(&player_ip)));
-
-	let join = Message::Join(true, player_ip.clone());
-
-	player.write_all(&join.serialize()).expect("Failed to write to player");
-	println!("Sent {} join request...", response);
-
-	let mut buffer = [0; 1024];
-	match player.read(&mut buffer) {
-		Ok(0) => panic!("ThIS sHOuLd NoT bE HaPPeNIng"),
-		Ok(bytes_read) => {
-			let Some(message) = Message::deserialize(&buffer[..bytes_read]) else {
-				panic!("Did not recieve valid message during initialization")
-			};
-
-			match message {
-				Message::CurrPlayers(ips) => {
-					println!("  Recieved current players...");
-					let mut network_lock = network.lock().expect("Failed to acquire lock on network");
-
-					for ip in ips {
-						if ip == player_ip {
-							continue;
-						}
-
-						if let Ok(mut player) = TcpStream::connect(&ip) {
-							let join = Message::Join(false, network_lock.ip.clone());
-							player.write_all(&join.serialize()).expect(&format!("Failed to write to IP address {}", &ip));
-
-							let ip_thread = network_lock.add_and_listen(ip, player);
-							let network = network.clone();
-							thread::spawn(move || {
-								let ip = ip_thread.join().expect("Something, somewhere, went wrong");
-								let mut network = network.lock().expect("Failed to acquire lock on network");
-								network.players.remove(&ip);
-								network.helis.remove(&ip);
-								network.bullets.remove(&ip);
-							});
-						}
-					}
-
-					let ip_thread = network_lock.add_and_listen(response.clone(), player);
-					let network = network.clone();
-					thread::spawn(move || {
-						let ip = ip_thread.join().expect("Something, somewhere, went wrong");
-						let mut network = network.lock().expect("Failed to acquire lock on network");
-						network.players.remove(&ip);
-						network.helis.remove(&ip);
-						network.bullets.remove(&ip);
-					});
-				}
-				_ => panic!("Did not recieve CurrPlayers during initialization")
-			}
-
-			let network = network.clone();
-			thread::spawn(move || network::start_listening_for_connection(network));
-		}
-		Err(e) => eprintln!("{e}")
-	}
-
-	network
-}
-
-fn get_player_ip() -> String {
-	let mut response = String::new();
-
-	println!("What is your IP address?");
-
-	io::stdin().read_line(&mut response).expect("Failed to read input from player");
-
-	response.as_str().trim().to_string()
-}
-
 fn get_current_time() -> Duration {
 	SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards and we're all doomed anyway")
-}
-
-// Black magic I found on the internets
-fn is_counter_clockwise(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> bool {
-	(c.1 - a.1) * (b.0 - a.0) > (b.1 - a.1) * (c.0 - a.0)
-}
-
-fn do_segments_intersect(a: ((f64, f64), (f64, f64)), b: ((f64, f64), (f64, f64))) -> bool {
-	is_counter_clockwise(a.0, b.0, b.1) != is_counter_clockwise(a.1, b.0, b.1) && is_counter_clockwise(a.0, a.1, b.0) != is_counter_clockwise(a.0, a.1, b.1)
-}
-
-fn do_segments_intersect_with_thickness(a: ((f64, f64), (f64, f64)), b: ((f64, f64), (f64, f64)), thickness: f64) -> bool {
-	let thick_a = ((a.0.0, a.0.1 + thickness), (a.1.0, a.1.1 + thickness));
-	do_segments_intersect(a, b) || do_segments_intersect(thick_a, b)
-}
-
-fn get_normals(a: (f64, f64), b: (f64, f64)) -> ((f64, f64), (f64, f64)) {
-	// if dx == 0 then dy = 1
-	// if dy == 0 then dx = 1
-	// sqrt(dx^2 + dy^2) = 1
-	let dx = b.0 - a.0;
-	let dy = b.1 - a.1;
-	let length = (dx * dx + dy * dy).sqrt();
-	((-dy / length, dx / length), (dy / length, -dx / length))
 }

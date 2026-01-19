@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{
+	self,
 	Read,
 	Write
 };
@@ -249,4 +250,102 @@ fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets
 		}
 		_ => panic!("Recieved unsupported message during game")
 	}
+}
+
+pub fn create_game() -> Arc<Mutex<Network>> {
+	//let ip = get_player_ip();
+	let ip = String::from("10.0.0.65:8080");
+	let network = Arc::new(Mutex::new(Network::new(&ip)));
+
+	let network_clone = network.clone();
+	thread::spawn(move || start_listening_for_connection(network_clone));
+
+	network
+}
+
+pub fn connect_to_game() -> Arc<Mutex<Network>> {
+	let /*mut*/ response = String::from("10.0.0.65:8080");
+
+	//println!("What is one of the player's IP address?");
+
+	//io::stdin().read_line(&mut response).expect("Failed to read input from
+	// player");
+
+	//response = response.as_str().trim().to_string();
+
+	let mut player = TcpStream::connect(&response).expect(&format!("Failed to connect to player at IP address \"{}\"", &response));
+
+	//let player_ip = get_player_ip();
+	let player_ip = String::from("10.0.0.65:8081");
+	let network = Arc::new(Mutex::new(Network::new(&player_ip)));
+
+	let join = Message::Join(true, player_ip.clone());
+
+	player.write_all(&join.serialize()).expect("Failed to write to player");
+	println!("Sent {} join request...", response);
+
+	let mut buffer = [0; 1024];
+	match player.read(&mut buffer) {
+		Ok(0) => panic!("ThIS sHOuLd NoT bE HaPPeNIng"),
+		Ok(bytes_read) => {
+			let Some(message) = Message::deserialize(&buffer[..bytes_read]) else {
+				panic!("Did not recieve valid message during initialization")
+			};
+
+			match message {
+				Message::CurrPlayers(ips) => {
+					println!("  Recieved current players...");
+					let mut network_lock = network.lock().expect("Failed to acquire lock on network");
+
+					for ip in ips {
+						if ip == player_ip {
+							continue;
+						}
+
+						if let Ok(mut player) = TcpStream::connect(&ip) {
+							let join = Message::Join(false, network_lock.ip.clone());
+							player.write_all(&join.serialize()).expect(&format!("Failed to write to IP address {}", &ip));
+
+							let ip_thread = network_lock.add_and_listen(ip, player);
+							let network = network.clone();
+							thread::spawn(move || {
+								let ip = ip_thread.join().expect("Something, somewhere, went wrong");
+								let mut network = network.lock().expect("Failed to acquire lock on network");
+								network.players.remove(&ip);
+								network.helis.remove(&ip);
+								network.bullets.remove(&ip);
+							});
+						}
+					}
+
+					let ip_thread = network_lock.add_and_listen(response.clone(), player);
+					let network = network.clone();
+					thread::spawn(move || {
+						let ip = ip_thread.join().expect("Something, somewhere, went wrong");
+						let mut network = network.lock().expect("Failed to acquire lock on network");
+						network.players.remove(&ip);
+						network.helis.remove(&ip);
+						network.bullets.remove(&ip);
+					});
+				}
+				_ => panic!("Did not recieve CurrPlayers during initialization")
+			}
+
+			let network = network.clone();
+			thread::spawn(move || start_listening_for_connection(network));
+		}
+		Err(e) => eprintln!("{e}")
+	}
+
+	network
+}
+
+fn get_player_ip() -> String {
+	let mut response = String::new();
+
+	println!("What is your IP address?");
+
+	io::stdin().read_line(&mut response).expect("Failed to read input from player");
+
+	response.as_str().trim().to_string()
 }

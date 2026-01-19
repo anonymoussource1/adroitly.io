@@ -14,7 +14,7 @@ use crate::camera::{
 use crate::keyboard::Keyboard;
 
 pub const SIZE: f64 = 1.0;
-pub const SPEED: f64 = 24.0;
+pub const SPEED: f64 = 12.0;
 
 pub struct Helicopter {
 	pub x: f64,
