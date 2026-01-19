@@ -142,21 +142,22 @@ impl Segment {
 		surface.fill_rect(Rect::new(0, 0, width, height), color)?;
 
 		let texture_creator = canvas.texture_creator();
-		let mut texture = surface.as_texture(&texture_creator).unwrap();
-		if transparency < 255 {
-			texture.set_blend_mode(BlendMode::Blend);
-			texture.set_alpha_mod(transparency);
-		}
+		if let Ok(mut texture) = surface.as_texture(&texture_creator) {
+			if transparency < 255 {
+				texture.set_blend_mode(BlendMode::Blend);
+				texture.set_alpha_mod(transparency);
+			}
 
-		canvas.copy_ex(
-			&texture,
-			None,
-			Some(Rect::new(x, y - (self.width / 2.0 * WORLD_TO_PIXELS) as i32, width, height)),
-			angle,
-			Some(Point::new(0, (self.width / 2.0 * WORLD_TO_PIXELS) as i32)),
-			false,
-			false
-		)?;
+			canvas.copy_ex(
+				&texture,
+				None,
+				Some(Rect::new(x, y - (self.width / 2.0 * WORLD_TO_PIXELS) as i32, width, height)),
+				angle,
+				Some(Point::new(0, (self.width / 2.0 * WORLD_TO_PIXELS) as i32)),
+				false,
+				false
+			)?;
+		} else { }
 
 		Ok(())
 	}
