@@ -46,6 +46,28 @@ use keyboard::Keyboard;
 use network::Network;
 use shapes::*;
 
+enum VerticalDirection {
+	Up,
+	Down,
+}
+
+enum HorizontalDirection {
+	Left,
+	Right,
+}
+
+enum GameEvent {
+	NewHeliDirection(Option<VerticalDirection>, Option<HorizontalDirection>),
+	PlayerDeath,
+	BulletCreation(Bullet),
+	BulletDestruction(String, usize),
+	BulletReflection(String, usize, Segment),
+	FortCreation(Fort),
+	FortHit(String, usize),
+	FortConnectionCreation(usize, Vec2),
+	CurrFortChanged(usize),
+}
+
 fn main() -> Result<(), String> {
 	let sdl2 = sdl2::init()?;
 	let mut events = match sdl2.event_pump() {
@@ -85,8 +107,9 @@ fn main() -> Result<(), String> {
 	let mut death_timer = Duration::ZERO;
 	let mut last_start = get_current_time();
 	let mut curr_fort_index = 0;
-
 	'main: loop {
+		let mut game_events = Vec::new();
+
 		let start = get_current_time();
 		let mut network = network.lock().expect("Failed to acquire lock on network");
 		let mut heli = heli_mutex.lock().expect("Failed to acquire lock on heli");
@@ -113,204 +136,233 @@ fn main() -> Result<(), String> {
 				0
 			);
 
-			network.send_bullet(&bullet);
-
-			let ip = network.ip.clone();
-			network.bullets.get_mut(&ip).unwrap().lock().expect("Failed to acquire lock on bullets").push(bullet);
-
-			shoot_cooldown = Duration::from_millis(250);
+			game_events.push(GameEvent::BulletCreation(bullet));
 		}
 
-		// Refactor because I have no idea what's happening
-		if keyboard.is_space_down && !heli.is_dead {
-			let margin = (helicopter::SIZE - fort::SIZE) / 2.0;
-			let fort = Fort::new(heli.x + margin, heli.y + margin);
-			let ip = network.ip.clone();
-			let mut forts = network.forts.get(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
-
-			if let Some((index, other)) = forts.iter().enumerate().find(|&other| {
-				let other = other.1;
-				let distance = ((fort.y - other.y) * (fort.y - other.y) + (fort.x - other.x) * (fort.x - other.x)).sqrt().abs();
-
-				distance < 3.0
-			}) {
-				let curr_fort = forts.get(curr_fort_index).unwrap();
-				let is_valid_connection = !curr_fort.connections.contains(&(other.x, other.y)) && !other.connections.contains(&(curr_fort.x, curr_fort.y));
-				let other = (other.x, other.y);
-				let curr_fort = forts.get_mut(curr_fort_index).unwrap();
-
-				if other.0 != curr_fort.x || other.1 != curr_fort.y {
-					curr_fort_index = index;
-
-					let distance = ((curr_fort.y - other.1) * (curr_fort.y - other.1) + (curr_fort.x - other.0) * (curr_fort.x - other.0)).sqrt().abs();
-					if distance < 15.0 && is_valid_connection {
-						curr_fort.connections.push((other.0, other.1));
-						let curr = (curr_fort.x, curr_fort.y);
-						drop(forts);
-						network.send_fort_connection(((curr.0, curr.1), (other.0, other.1)));
-					}
-				}
-			} else if !forts.is_empty() {
-				let curr_fort = forts.get(curr_fort_index).unwrap();
-				let distance = ((heli.y - curr_fort.y) * (heli.y - curr_fort.y) + (heli.x - curr_fort.x) * (heli.x - curr_fort.x)).sqrt().abs();
-
-				if distance > 3.0 {
-					drop(forts);
-					network.send_fort(&fort);
-					let mut forts = network.forts.get_mut(&ip).unwrap().lock().expect("Failed to acquire lock on forts");
-					let curr_fort = forts.get_mut(curr_fort_index).unwrap();
-
-					if distance < 15.0 {
-						curr_fort.connections.push((fort.x, fort.y));
-						let curr = (curr_fort.x, curr_fort.y);
-						let other = (fort.x, fort.y);
-						forts.push(fort);
-						curr_fort_index = forts.len() - 1;
-						drop(forts);
-						network.send_fort_connection(((curr.0, curr.1), (other.0, other.1)));
-					} else {
-						forts.push(fort);
-						curr_fort_index = forts.len() - 1;
-					}
-				}
-			} else {
-				drop(forts);
-				network.send_fort(&fort);
-				network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on forts").push(fort);
-			}
-
-			keyboard.is_space_down = false;
-		}
-
-		// END OF INPUT
-
-		if delta_time <= shoot_cooldown {
-			shoot_cooldown -= delta_time;
+		let vertical = if keyboard.is_w_down {
+			Some(VerticalDirection::Up)
+		} else if keyboard.is_s_down {
+			Some(VerticalDirection::Down)
 		} else {
-			shoot_cooldown = Duration::ZERO;
-		}
+			None
+		};
 
-		// Can this...
-		for bullets in network.bullets.values_mut() {
-			let mut bullets = bullets.lock().expect("Failed to acquire lock on bullets");
-			for bullet in bullets.iter_mut() {
-				bullet.update(&delta_time);
+		let horizontal = if keyboard.is_a_down {
+			Some(HorizontalDirection::Left)
+		} else if keyboard.is_d_down {
+			Some(HorizontalDirection::Right)
+		} else {
+			None
+		};
+
+		game_events.push(GameEvent::NewHeliDirection(vertical, horizontal));
+
+		if !heli.is_dead && keyboard.is_space_down {
+			let margin = (helicopter::SIZE - fort::SIZE) / 2.0;
+			let forts = network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on forts");
+			let new_fort = Fort::new(heli.x + margin, heli.y + margin);
+
+			let mut min_distance = f64::MAX;
+			let mut closest_fort_index = 0;
+			for (index, fort) in forts.iter().enumerate() {
+				let distance = (new_fort.y - fort.y) * (new_fort.y - fort.y) + (new_fort.x - fort.x) * (new_fort.x - fort.x);
+				if distance < min_distance { 
+					min_distance = distance;
+					closest_fort_index = index;
+				}
 			}
-			bullets.retain(|bullet| bullet.age < bullet::LIFESPAN);
+
+			if forts.is_empty() {
+				game_events.push(GameEvent::FortCreation(new_fort));
+			} else {
+				let curr_fort = forts.get(curr_fort_index).unwrap();
+				let closest_fort = forts.get(closest_fort_index).unwrap();
+
+				let curr_fort_distance = (new_fort.y - curr_fort.y) * (new_fort.y - curr_fort.y) + (new_fort.x - curr_fort.x) * (new_fort.x - curr_fort.x);
+				let closest_fort_distance = (new_fort.y - closest_fort.y) * (new_fort.y - closest_fort.y) + (new_fort.x - closest_fort.x) * (new_fort.x - closest_fort.x);
+
+				match (curr_fort_distance > 15.0 * 15.0, closest_fort_distance < 3.0 * 3.0) {
+					(false, false) => {
+						game_events.push(GameEvent::FortConnectionCreation(curr_fort_index, Vec2::new(new_fort.x, new_fort.y)));
+						game_events.push(GameEvent::FortCreation(new_fort));
+					},
+					(true, false) => game_events.push(GameEvent::FortCreation(new_fort)),
+					(false, true) => if curr_fort_index != closest_fort_index {
+						if !closest_fort.connections.contains(&(curr_fort.x, curr_fort.y)) && !curr_fort.connections.contains(&(closest_fort.x, closest_fort.y)){
+							game_events.push(GameEvent::FortConnectionCreation(curr_fort_index, Vec2::new(closest_fort.x, closest_fort.y)));
+						}
+						game_events.push(GameEvent::CurrFortChanged(closest_fort_index));
+					},
+					(true, true) => game_events.push(GameEvent::CurrFortChanged(closest_fort_index)),
+				}
+			}
 		}
 
-		let old_pos = (heli.x, heli.y);
-		if !heli.is_dead {
-			heli.update(&delta_time, &keyboard, &boundaries);
-			let heli_bounds = Rectangle::new(heli.x, heli.y, helicopter::SIZE, helicopter::SIZE);
+		for (bullet_ip, bullets) in network.bullets.iter() {
+			for (bullet_index, bullet) in bullets.lock().expect("Failed to acquire lock on bullets").iter().enumerate() {
+				// TODO, Potential issue, if sending bullet lags a lot, lifetime & physics would be
+				// behind which is desync. Maybe instead of simulating, we could send with a
+				// timestamp? Need to research
+				if bullet.age >= bullet::LIFESPAN {
+					game_events.push(GameEvent::BulletDestruction(bullet_ip.clone(), bullet_index));
+				}
 
-			for (ip, forts) in network.forts.iter() {
-				if ip == &network.ip {
+				if bullet_ip != &network.ip && !heli.is_dead && heli.bounds().intersects_with_rect(&bullet.bounds()) {
+					game_events.push(GameEvent::PlayerDeath);
+					game_events.push(GameEvent::BulletDestruction(bullet_ip.clone(), bullet_index));
+
 					continue;
-				}
-				for fort in forts.lock().expect("Failed to acquire lock on forts").iter() {
-					for connection in fort.connections.iter() {
-						let connection = Segment::new(
-							Vec2::new(fort.x + fort::SIZE / 2.0, fort.y + fort::SIZE / 2.0),
-							Vec2::new(connection.0 + fort::SIZE / 2.0, connection.1 + fort::SIZE / 2.0),
-							0.5
-						);
-
-						if connection.intersects_with_rect(&heli_bounds) {
-							let spawn = helicopter::find_valid_spawn(&boundaries);
-
-							heli.x = spawn.0;
-							heli.y = spawn.1;
-							death_timer = Duration::from_secs(5);
-						}
-					}
-				}
-			}
-		}
-
-		let mut removed_forts = Vec::new();
-		let heli_bounds = Rectangle::new(heli.x, heli.y, helicopter::SIZE, helicopter::SIZE);
-		for (ip, bullets) in network.bullets.iter() {
-			for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter_mut() {
-				let x = bullet.x - bullet::DIAMETER / 2.0;
-				let y = bullet.y - bullet::DIAMETER / 2.0;
-				let bullet_bounds = Rectangle::new(x, y, bullet::DIAMETER, bullet::DIAMETER);
-
-				if ip != &network.ip {
-					// ..And this be combined?
-					if !heli.is_dead && heli_bounds.intersects_with_rect(&bullet_bounds) {
-						let spawn = helicopter::find_valid_spawn(&boundaries);
-
-						heli.x = spawn.0;
-						heli.y = spawn.1;
-						death_timer = Duration::from_secs(5);
-					}
-
-					let mut forts = network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on forts");
-					let prev_len = forts.len();
-
-					forts.retain(|fort| {
-						let fort_bounds = Rectangle::new(fort.x, fort.y, fort::SIZE, fort::SIZE);
-						if bullet_bounds.intersects_with_rect(&fort_bounds) {
-							removed_forts.push((fort.x, fort.y));
-							false
-						} else {
-							true
-						}
-					});
-					forts.iter_mut().for_each(|fort| fort.connections.retain(|connection| !removed_forts.contains(connection)));
-
-					if curr_fort_index != 0 {
-						curr_fort_index = curr_fort_index - (prev_len - forts.len());
-					}
 				}
 
 				for (fort_ip, forts) in network.forts.iter() {
-					if ip == fort_ip {
-						continue;
-					}
+					for (fort_index, fort) in forts.lock().expect("Failed to acquire lock on forts").iter().enumerate() {
+						if fort_ip == bullet_ip { continue; }
 
-					for fort in forts.lock().expect("Failed to acquire lock on fort").iter() {
+						if fort.bounds().intersects_with_rect(&bullet.bounds()) {
+							game_events.push(GameEvent::FortHit(fort_ip.clone(), fort_index));
+							game_events.push(GameEvent::BulletDestruction(bullet_ip.clone(), bullet_index));
+
+							continue;
+						}
+
 						for connection in fort.connections.iter() {
-							let connection = Segment::new(
-								Vec2::new(fort.x + fort::SIZE / 2.0, fort.y + fort::SIZE / 2.0),
-								Vec2::new(connection.0 + fort::SIZE / 2.0, connection.1 + fort::SIZE / 2.0),
-								0.5
-							);
-							let normal = connection.get_normal();
-
-							if connection.intersects_with_rect(&bullet_bounds) {
-								let temp_angle = (normal.y / normal.x).atan();
-								let angle = if normal.x < 0.0 { temp_angle + std::f64::consts::PI } else { temp_angle };
-								let rotated_x = bullet.dx * (-angle).cos() - bullet.dy * (-angle).sin();
-								let rotated_y = bullet.dx * (-angle).sin() + bullet.dy * (-angle).cos();
-								let reflected_x = -rotated_x;
-								let reflected_y = rotated_y;
-								let final_x = reflected_x * angle.cos() - reflected_y * angle.sin();
-								let final_y = reflected_x * angle.sin() + reflected_y * angle.cos();
-
-								bullet.dx = final_x;
-								bullet.dy = final_y;
+							let wall_segment = Segment::new(Vec2::new(fort.x + fort::SIZE / 2.0, fort.y + fort::SIZE / 2.0), Vec2::new(connection.0 + fort::SIZE / 2.0, connection.1 + fort::SIZE / 2.0), fort::CONNECTION_HEIGHT);
+							if bullet.bounds().intersects_with_segment(&wall_segment) {
+								game_events.push(GameEvent::BulletReflection(bullet_ip.clone(), bullet_index, wall_segment));
 							}
 						}
 					}
 				}
 			}
 		}
-		removed_forts.iter().for_each(|fort| network.send_fort(&Fort::new(fort.0, fort.1)));
 
-		// END OF PHYSICS
+		for event in game_events.into_iter() {
+			match event {
+				GameEvent::NewHeliDirection(vertical, horizontal) => {
+					let delta_time = delta_time.as_millis() as f64 / 1000.0;
+					let mut delta_y = 0.0;
+					let mut delta_x = 0.0;
 
-		if old_pos != (heli.x, heli.y) {
-			network.send_pos(&heli);
+					match vertical {
+						Some(VerticalDirection::Up) => delta_y = -helicopter::SPEED * delta_time,
+						Some(VerticalDirection::Down) => delta_y = helicopter::SPEED * delta_time,
+						None => (),
+					}
+
+					match horizontal {
+						Some(HorizontalDirection::Left) => delta_x = -helicopter::SPEED * delta_time,
+						Some(HorizontalDirection::Right) => delta_x = helicopter::SPEED * delta_time,
+						None => (),
+					}
+
+					if vertical.is_some() && horizontal.is_some() {
+						delta_x /= 2.0_f64.sqrt();
+						delta_y /= 2.0_f64.sqrt();
+					}
+
+					// TODO
+					for boundary in boundaries.iter() {
+						if !(heli.x + delta_x >= boundary.x + boundary.width || heli.x + delta_x + helicopter::SIZE <= boundary.x || heli.y >= boundary.y + boundary.height || heli.y + helicopter::SIZE <= boundary.y) {
+							if heli.x >= boundary.x + boundary.width {
+								delta_x = boundary.x + boundary.width - heli.x;
+							} else {
+								delta_x = boundary.x - helicopter::SIZE - heli.x;
+							}
+						}
+
+						if !(heli.x >= boundary.x + boundary.width || heli.x + helicopter::SIZE <= boundary.x || heli.y + delta_y >= boundary.y + boundary.height || heli.y + delta_y + helicopter::SIZE <= boundary.y) {
+							if heli.y >= boundary.y + boundary.height {
+								delta_y = boundary.y + boundary.height - heli.y;
+							} else {
+								delta_y = boundary.y - helicopter::SIZE - heli.y;
+							}
+						}
+					}
+
+					if delta_x != 0.0 || delta_y != 0.0 {
+						heli.x += delta_x;
+						heli.y += delta_y;
+						
+						network.send_pos(&heli);
+					}
+				},
+				GameEvent::PlayerDeath => {
+					let spawn = helicopter::find_valid_spawn(&boundaries);
+
+					heli.x = spawn.0;
+					heli.y = spawn.1;
+					heli.is_dead = true;
+					network.send_death();
+					network.send_pos(&heli);
+					death_timer = Duration::from_secs(5);
+				},
+				GameEvent::BulletCreation(bullet) => {
+					network.send_bullet(&bullet);
+					let mut bullets = network.bullets.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on bullets");
+					bullets.push(bullet);
+					shoot_cooldown = Duration::from_millis(250);
+				},
+				GameEvent::BulletDestruction(ip, index) => {
+					let mut bullets = network.bullets.get(&ip).unwrap().lock().expect("Failed to acquire lock on bullets");
+					_ = bullets.remove(index);
+				},
+				GameEvent::BulletReflection(ip, index, segment) => {
+					// TODO, figure out if this should be network message or computed locally
+					let mut bullets = network.bullets.get(&ip).unwrap().lock().expect("Failed to acquire lock on bullets");
+					let normal = segment.get_normal();
+					let bullet = bullets.get_mut(index).unwrap();
+
+					// Optimization
+					let normal_length = (normal.x * normal.x + normal.y * normal.y).sqrt();
+					let cos = normal.x / normal_length;
+					let sin = normal.y / normal_length;
+					let rotated_x = bullet.dx * cos - bullet.dy * -sin;
+					let rotated_y = bullet.dx * -sin + bullet.dy * cos;
+					let reflected_x = -rotated_x;
+					let reflected_y = rotated_y;
+					let final_x = reflected_x * cos - reflected_y * sin;
+					let final_y = reflected_x * sin + reflected_y * cos;
+
+					bullet.dx = final_x;
+					bullet.dy = final_y;
+				},
+				GameEvent::FortCreation(fort) => {
+					network.send_fort(&fort);
+					let mut forts = network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on network");
+					forts.push(fort);
+					curr_fort_index = forts.len() - 1;
+				},
+				GameEvent::FortHit(ip, index) => {
+					let mut forts = network.forts.get(&ip).unwrap().lock().expect("Failed to acquire lock on network");
+					let fort = forts.get_mut(index).unwrap();
+					
+					fort.health -= 1;
+
+					if fort.health == 0 {
+						let removed_fort = forts.remove(index);
+						forts.iter_mut().for_each(|fort| fort.connections.retain(|connection| connection != &(removed_fort.x, removed_fort.y)));
+
+						if curr_fort_index != 0 { curr_fort_index -= 1; }
+					}
+				},
+				GameEvent::FortConnectionCreation(index, end) => {
+					let mut forts = network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on network");
+					let fort = forts.get_mut(index).unwrap();
+					let connection = ((fort.x, fort.y), (end.x, end.y));
+					fort.connections.push((end.x, end.y));
+
+					drop(forts);
+
+					network.send_fort_connection(connection);
+				},
+				GameEvent::CurrFortChanged(index) => curr_fort_index = index,
+			}
 		}
 
-		if death_timer == Duration::from_secs(5) {
-			heli.is_dead = true;
-			network.send_death();
-		} else if heli.is_dead && death_timer.is_zero() {
-			heli.is_dead = false;
-			network.send_death();
+		for (_, bullets) in network.bullets.iter() {
+			for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter_mut() {
+				bullet.update(&delta_time);
+			}
 		}
 
 		if delta_time <= death_timer {
@@ -319,7 +371,16 @@ fn main() -> Result<(), String> {
 			death_timer = Duration::ZERO;
 		}
 
-		// END OF NETWORK
+		if delta_time <= shoot_cooldown {
+			shoot_cooldown -= delta_time;
+		} else {
+			shoot_cooldown = Duration::ZERO;
+		}
+
+		if heli.is_dead && death_timer.is_zero() {
+			heli.is_dead = false;
+			network.send_death();
+		}
 
 		canvas.set_draw_color(Color::RGB(20, 20, 20));
 		canvas.clear();
@@ -344,6 +405,7 @@ fn main() -> Result<(), String> {
 			for (ip, heli) in network.helis.iter() {
 				println!("HELI ON {}: {:?}", ip, heli.lock().expect("Failed to acquire lock on heli"));
 			}
+			println!("TOTAL CONNECTIONS: {}", network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on forts").iter().map(|fort| fort.connections.len()).reduce(|a, b| a + b).unwrap());
 			println!("DEATH TIMER: {:?}", death_timer);
 			keyboard.is_p_down = false;
 		}

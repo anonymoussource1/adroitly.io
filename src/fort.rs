@@ -8,17 +8,18 @@ use crate::camera::{
 	worldspace_to_screenspace
 };
 use crate::shapes::{
-	Segment,
-	Vec2
+	Rectangle, Segment, Vec2
 };
 
 pub const SIZE: f64 = 0.75;
 pub const CONNECTION_HEIGHT: f64 = 0.5;
+pub const MAX_HEALTH: u8 = 3;
 
 #[derive(Clone)]
 pub struct Fort {
 	pub x: f64,
 	pub y: f64,
+	pub health: u8,
 	pub connections: Vec<(f64, f64)>
 }
 
@@ -27,6 +28,7 @@ impl Fort {
 		Fort {
 			x,
 			y,
+			health: MAX_HEALTH,
 			connections: Vec::new()
 		}
 	}
@@ -51,5 +53,9 @@ impl Fort {
 		}
 
 		Ok(())
+	}
+
+	pub fn bounds(&self) -> Rectangle {
+		Rectangle::new(self.x, self.y, SIZE, SIZE)
 	}
 }

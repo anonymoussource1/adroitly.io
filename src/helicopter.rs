@@ -12,6 +12,7 @@ use crate::camera::{
 	worldspace_to_screenspace
 };
 use crate::keyboard::Keyboard;
+use crate::shapes::Rectangle;
 
 pub const SIZE: f64 = 1.0;
 pub const SPEED: f64 = 12.0;
@@ -81,6 +82,10 @@ impl Helicopter {
 		canvas.fill_rect(Rect::new(x, y, size, size))?;
 
 		Ok(())
+	}
+
+	pub fn bounds(&self) -> Rectangle {
+		Rectangle::new(self.x, self.y, SIZE, SIZE)
 	}
 }
 

@@ -7,6 +7,7 @@ use crate::camera::{
 	WORLD_TO_PIXELS,
 	worldspace_to_screenspace
 };
+use crate::shapes::Rectangle;
 
 pub const DIAMETER: f64 = 0.5;
 pub const LIFESPAN: Duration = Duration::from_secs(2);
@@ -44,6 +45,10 @@ impl Bullet {
 		let delta_time = delta_time.as_millis() as f64 / 1000.0;
 		self.x += self.dx * 15.0 * delta_time;
 		self.y += self.dy * 15.0 * delta_time;
+	}
+
+	pub fn bounds(&self) -> Rectangle {
+		Rectangle::new(self.x, self.y, DIAMETER, DIAMETER)
 	}
 }
 

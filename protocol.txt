@@ -1,27 +1,26 @@
-Initialization:
-	JOIN [is first] [ip]
-		if is first: CURRPLAYERS [ip...]
-		POS [x] [y]
-		(BULLET [x] [y] [dx] [dy] [time_step])...
+Join -> 
+	CurrPlayers?,
+	Pos
 
-Gameplay:
-	POS [x] [y]
-	BULLET [x] [y] [dx] [dy]
+CurrPlayers ->
+	Join*
 
-Initialization:
-	JOIN
-		[type][is_first][ip address][port]
-		  1b       1b         4b       2b
-	CURRPLAYERS
-		[type][len]([ip address][port])...
-		  1b	1b      4b        2b 
+Pos ->
+	Update heli pos
 
-Gameplay:
-	POS
-		[type][x][y]
-		  1b   8b 8b
-	BULLET
-		[type][x][y][dx][dy][time_step]
-		  2b   8b 8b 8b  8b     16b
-	DEATH
-		[type]
+Bullet ->
+	Create new bullet
+
+Death ->
+	Set heli dead
+
+Fort ->
+	Create new fort
+
+FortConnection ->
+	Connect two forts
+
+loop over enemy bullets
+	Check for player collision
+	loop over MY forts
+		Check for fort collision

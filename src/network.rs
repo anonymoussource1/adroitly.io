@@ -235,12 +235,7 @@ fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets
 		}
 		Message::Fort(x, y) => {
 			let mut forts = forts.lock().expect("Failed to acquire lock on forts");
-			if let Some((index, _)) = forts.iter().enumerate().find(|fort| fort.1.x == x && fort.1.y == y) {
-				forts.remove(index);
-				forts.iter_mut().for_each(|fort| fort.connections.retain(|connection| !(connection.0 == x && connection.1 == y)));
-			} else {
-				forts.push(Fort::new(x, y));
-			}
+			forts.push(Fort::new(x, y));
 		}
 		Message::FortConnection(x1, y1, x2, y2) => {
 			let mut forts = forts.lock().expect("Failed to acquire lock on forts");

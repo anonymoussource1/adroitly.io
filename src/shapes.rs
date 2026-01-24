@@ -62,6 +62,15 @@ impl Rectangle {
 	pub fn intersects_with_rect(&self, other: &Rectangle) -> bool {
 		!(self.x > other.x + other.width || self.x + self.width < other.x || self.y > other.y + other.height || self.y + self.height < other.y)
 	}
+
+	pub fn intersects_with_segment(&self, other: &Segment) -> bool {
+		let top = Segment::new(Vec2::new(self.x, self.y), Vec2::new(self.x + self.width, self.y), 0.0);
+		let right = Segment::new(Vec2::new(self.x + self.width, self.y), Vec2::new(self.x + self.width, self.y + self.height), 0.0);
+		let bottom = Segment::new(Vec2::new(self.x + self.width, self.y + self.height), Vec2::new(self.x, self.y + self.height), 0.0);
+		let left = Segment::new(Vec2::new(self.x, self.y + self.height), Vec2::new(self.x, self.y), 0.0);
+
+		other.intersects_with_segment(&top) || other.intersects_with_segment(&right) || other.intersects_with_segment(&bottom) || other.intersects_with_segment(&left)
+	}
 }
 
 #[allow(unused)]
