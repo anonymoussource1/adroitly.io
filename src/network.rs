@@ -58,7 +58,7 @@ impl Network {
 	}
 
 	pub fn send_pos(&mut self, heli: &Helicopter) {
-		let pos = Message::Pos(heli.x, heli.y);
+		let pos = Message::Pos(heli.x, heli.y, heli.dx, heli.dy);
 		for (_, player) in self.players.iter_mut() {
 			_ = player.write_all(&pos.serialize());
 		}
@@ -137,7 +137,7 @@ pub fn start_listening_for_connection(network: Arc<Mutex<Network>>) {
 
 						{
 							let heli = network.helis.get(&network.ip).unwrap().lock().expect("Failed to get lock on helicopter");
-							let pos = Message::Pos(heli.x, heli.y);
+							let pos = Message::Pos(heli.x, heli.y, heli.dx, heli.dy);
 							stream.write_all(&pos.serialize()).expect("Failed to write to player");
 						}
 
@@ -195,13 +195,8 @@ pub fn handle_player(mut player: TcpStream, heli: Arc<Mutex<Helicopter>>, bullet
 			}
 			Ok(bytes_read) => {
 				let mut start = 0;
-				/*println!("Full: {:?}", &buffer[..bytes_read]);
-				println!("Full Length: {}", bytes_read);*/
 				while start < bytes_read {
-					//println!("Raw Part: {:?}", &buffer[start..bytes_read]);
 					let Some(message) = Message::deserialize(&buffer[start..bytes_read]) else { continue };
-					/*println!("Raw Length: {}", message.len());
-					println!("Deserialize Part: {}", message);*/
 
 					start += message.len() as usize;
 
@@ -221,10 +216,12 @@ pub fn handle_player(mut player: TcpStream, heli: Arc<Mutex<Helicopter>>, bullet
 
 fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets: Arc<Mutex<Vec<Bullet>>>, forts: Arc<Mutex<Vec<Fort>>>) {
 	match message {
-		Message::Pos(x, y) => {
+		Message::Pos(x, y, dx, dy) => {
 			let mut heli = heli.lock().expect("Failed to acquire lock on heli");
 			heli.x = x;
 			heli.y = y;
+			heli.dx = dx;
+			heli.dy = dy;
 		}
 		Message::Bullet(x, y, dx, dy, age) => {
 			bullets.lock().expect("Failed to acquire lock on bullets").push(Bullet::new(x, y, dx, dy, age as u64));
@@ -250,11 +247,14 @@ fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets
 pub fn create_game() -> Arc<Mutex<Network>> {
 	//let ip = get_player_ip();
 	let ip = String::from("10.0.0.65:8080");
+	println!("or here");
 	let network = Arc::new(Mutex::new(Network::new(&ip)));
+	println!("What about here");
 
 	let network_clone = network.clone();
 	thread::spawn(move || start_listening_for_connection(network_clone));
 
+	println!("DID you get here?");
 	network
 }
 

@@ -3,7 +3,7 @@ use std::fmt;
 pub enum Message {
 	Join(bool, String),
 	CurrPlayers(Vec<String>),
-	Pos(f64, f64),
+	Pos(f64, f64, f64, f64),
 	Bullet(f64, f64, f64, f64, u128),
 	Death,
 	Fort(f64, f64),
@@ -32,12 +32,14 @@ impl Message {
 
 				players
 			}
-			Self::Pos(x, y) => {
+			Self::Pos(x, y, dx, dy) => {
 				let mut pos = Vec::with_capacity(17);
 
 				pos.push(2);
 				pos.append(&mut Vec::from(x.to_be_bytes()));
 				pos.append(&mut Vec::from(y.to_be_bytes()));
+				pos.append(&mut Vec::from(dx.to_be_bytes()));
+				pos.append(&mut Vec::from(dy.to_be_bytes()));
 
 				pos
 			}
@@ -106,8 +108,10 @@ impl Message {
 			2 => {
 				let x = f64::from_be_bytes(bytes[1..=8].try_into().expect("Slice is incorrect length"));
 				let y = f64::from_be_bytes(bytes[9..=16].try_into().expect("Slice is incorrect length"));
+				let dx = f64::from_be_bytes(bytes[17..=24].try_into().expect("Slice is incorrect length"));
+				let dy = f64::from_be_bytes(bytes[25..=32].try_into().expect("Slice is incorrect length"));
 
-				Some(Self::Pos(x, y))
+				Some(Self::Pos(x, y, dx, dy))
 			}
 			3 => {
 				let x = f64::from_be_bytes(bytes[1..=8].try_into().expect("Slice is incorrect length"));
@@ -144,7 +148,7 @@ impl Message {
 		match self {
 			Self::Join(..) => 8,
 			Self::CurrPlayers(ips) => 2 + 6 * ips.len() as u8,
-			Self::Pos(..) => 17,
+			Self::Pos(..) => 33,
 			Self::Bullet(..) => 49,
 			Self::Death => 1,
 			Self::Fort(..) => 17,
@@ -167,7 +171,7 @@ impl fmt::Display for Message {
 
 				write!(f, "CURRPLAYERS {}", formatted.trim())
 			}
-			Self::Pos(x, y) => write!(f, "POS {} {}", x, y),
+			Self::Pos(x, y, dx, dy) => write!(f, "POS {} {} {} {}", x, y, dx, dy),
 			Self::Bullet(x, y, dx, dy, age) => write!(f, "BULLET {} {} {} {} {}", x, y, dx, dy, age),
 			Self::Death => write!(f, "DEATH"),
 			Self::Fort(x, y) => write!(f, "FORT {} {}", x, y),

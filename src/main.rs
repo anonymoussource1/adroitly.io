@@ -139,23 +139,25 @@ fn main() -> Result<(), String> {
 			game_events.push(GameEvent::BulletCreation(bullet));
 		}
 
-		let vertical = if keyboard.is_w_down {
-			Some(VerticalDirection::Up)
-		} else if keyboard.is_s_down {
-			Some(VerticalDirection::Down)
-		} else {
-			None
-		};
+		if !heli.is_dead {
+			let vertical = if keyboard.is_w_down {
+				Some(VerticalDirection::Up)
+			} else if keyboard.is_s_down {
+				Some(VerticalDirection::Down)
+			} else {
+				None
+			};
 
-		let horizontal = if keyboard.is_a_down {
-			Some(HorizontalDirection::Left)
-		} else if keyboard.is_d_down {
-			Some(HorizontalDirection::Right)
-		} else {
-			None
-		};
+			let horizontal = if keyboard.is_a_down {
+				Some(HorizontalDirection::Left)
+			} else if keyboard.is_d_down {
+				Some(HorizontalDirection::Right)
+			} else {
+				None
+			};
 
-		game_events.push(GameEvent::NewHeliDirection(vertical, horizontal));
+			game_events.push(GameEvent::NewHeliDirection(vertical, horizontal));
+		}
 
 		if !heli.is_dead && keyboard.is_space_down {
 			let margin = (helicopter::SIZE - fort::SIZE) / 2.0;
@@ -240,27 +242,29 @@ fn main() -> Result<(), String> {
 			match event {
 				GameEvent::NewHeliDirection(vertical, horizontal) => {
 					let delta_time = delta_time.as_millis() as f64 / 1000.0;
-					let mut delta_y = 0.0;
-					let mut delta_x = 0.0;
+					let prev_dy = heli.dy;
+					let prev_dx = heli.dx;
 
 					match vertical {
-						Some(VerticalDirection::Up) => delta_y = -helicopter::SPEED * delta_time,
-						Some(VerticalDirection::Down) => delta_y = helicopter::SPEED * delta_time,
-						None => (),
+						Some(VerticalDirection::Up) => heli.dy = -helicopter::SPEED,
+						Some(VerticalDirection::Down) => heli.dy = helicopter::SPEED,
+						None => heli.dy = 0.0,
 					}
 
 					match horizontal {
-						Some(HorizontalDirection::Left) => delta_x = -helicopter::SPEED * delta_time,
-						Some(HorizontalDirection::Right) => delta_x = helicopter::SPEED * delta_time,
-						None => (),
+						Some(HorizontalDirection::Left) => heli.dx = -helicopter::SPEED,
+						Some(HorizontalDirection::Right) => heli.dx = helicopter::SPEED,
+						None => heli.dx = 0.0,
 					}
 
 					if vertical.is_some() && horizontal.is_some() {
-						delta_x /= 2.0_f64.sqrt();
-						delta_y /= 2.0_f64.sqrt();
+						heli.dx /= 2.0_f64.sqrt();
+						heli.dy /= 2.0_f64.sqrt();
 					}
 
 					// TODO
+					let mut delta_x = heli.dx * delta_time;
+					let mut delta_y = heli.dy * delta_time;
 					for boundary in boundaries.iter() {
 						if !(heli.x + delta_x >= boundary.x + boundary.width || heli.x + delta_x + helicopter::SIZE <= boundary.x || heli.y >= boundary.y + boundary.height || heli.y + helicopter::SIZE <= boundary.y) {
 							if heli.x >= boundary.x + boundary.width {
@@ -268,6 +272,7 @@ fn main() -> Result<(), String> {
 							} else {
 								delta_x = boundary.x - helicopter::SIZE - heli.x;
 							}
+							heli.dx = 0.0;
 						}
 
 						if !(heli.x >= boundary.x + boundary.width || heli.x + helicopter::SIZE <= boundary.x || heli.y + delta_y >= boundary.y + boundary.height || heli.y + delta_y + helicopter::SIZE <= boundary.y) {
@@ -276,13 +281,14 @@ fn main() -> Result<(), String> {
 							} else {
 								delta_y = boundary.y - helicopter::SIZE - heli.y;
 							}
+							heli.dy = 0.0;
 						}
 					}
 
-					if delta_x != 0.0 || delta_y != 0.0 {
-						heli.x += delta_x;
-						heli.y += delta_y;
-						
+					heli.x += delta_x;
+					heli.y += delta_y;
+
+					if delta_x != prev_dx * delta_time || delta_y != prev_dy * delta_time {
 						network.send_pos(&heli);
 					}
 				},
@@ -363,6 +369,15 @@ fn main() -> Result<(), String> {
 			for bullet in bullets.lock().expect("Failed to acquire lock on bullets").iter_mut() {
 				bullet.update(&delta_time);
 			}
+		}
+
+		for (ip, heli) in network.helis.iter() {
+			if ip == &network.ip { continue; }
+			let delta_time = delta_time.as_millis() as f64 / 1000.0;
+			let mut heli = heli.lock().expect("Failed to acquire lock on heli");
+
+			heli.x += heli.dx * delta_time;
+			heli.y += heli.dy * delta_time;
 		}
 
 		if delta_time <= death_timer {
