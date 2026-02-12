@@ -8,7 +8,9 @@ use crate::camera::{
 	worldspace_to_screenspace
 };
 use crate::shapes::{
-	Rectangle, Segment, Vec2
+	Rectangle,
+	Segment,
+	Vec2
 };
 
 pub const SIZE: f64 = 0.75;

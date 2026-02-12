@@ -1,37 +1,36 @@
 use sdl2::pixels::Color;
-use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 
-use crate::camera::{
-	WORLD_TO_PIXELS,
-	worldspace_to_screenspace
+use crate::shapes::{
+	Vec2,
+	Segment
 };
 
 pub struct Boundary {
-	pub x: f64,
-	pub y: f64,
+	pub start: Vec2,
+	pub end: Vec2,
 	pub width: f64,
-	pub height: f64
+	pub color: Color
 }
 
 impl Boundary {
-	pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+	pub fn new(start: Vec2, end: Vec2, width: f64, color: Color) -> Self {
 		Boundary {
-			x,
-			y,
+			start,
+			end,
 			width,
-			height
+			color
 		}
 	}
 
-	pub fn draw(&self, focus: (f64, f64), canvas: &mut Canvas<Window>) -> Result<(), String> {
-		let (x, y) = worldspace_to_screenspace(focus, (self.x, self.y), canvas.window().size());
-		let width = (self.width * WORLD_TO_PIXELS) as u32;
-		let height = (self.height * WORLD_TO_PIXELS) as u32;
-		canvas.set_draw_color(Color::RGB(60, 60, 60));
-		canvas.fill_rect(Rect::new(x, y, width, height))?;
+	pub fn bounds(&self) -> Segment {
+		Segment::new(self.start.clone(), self.end.clone(), self.width)
+	}
 
+	pub fn draw(&self, focus: (f64, f64), canvas: &mut Canvas<Window>) -> Result<(), String> {
+		self.bounds().draw(focus, canvas, self.color, 255)?;
+		
 		Ok(())
 	}
 }

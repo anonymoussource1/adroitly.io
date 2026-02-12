@@ -10,6 +10,7 @@ I think I might finally finish a project!*
 4. Add shading to inside of fort
 5. Correct fort creation
 6. Maps!
+7. Wall sliding
 
 
 \*Emphasis on *might*!

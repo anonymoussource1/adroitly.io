@@ -247,14 +247,11 @@ fn handle_player_message(message: Message, heli: Arc<Mutex<Helicopter>>, bullets
 pub fn create_game() -> Arc<Mutex<Network>> {
 	//let ip = get_player_ip();
 	let ip = String::from("10.0.0.65:8080");
-	println!("or here");
 	let network = Arc::new(Mutex::new(Network::new(&ip)));
-	println!("What about here");
 
 	let network_clone = network.clone();
 	thread::spawn(move || start_listening_for_connection(network_clone));
 
-	println!("DID you get here?");
 	network
 }
 

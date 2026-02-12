@@ -1,2 +1,3 @@
 Known Bugs
 1. Can spawn bullets inside fort connection
+2. Slight jittering on some corners

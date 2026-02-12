@@ -51,9 +51,10 @@ pub fn find_valid_spawn(boundaries: &Vec<Boundary>) -> (f64, f64) {
 	'main: loop {
 		let x = rand::rng().random_range(-50.0..=(50.0 - SIZE));
 		let y = rand::rng().random_range(-50.0..=(50.0 - SIZE));
+		let bounds = Rectangle::new(x, y, SIZE, SIZE);
 
 		for boundary in boundaries.iter() {
-			if x < boundary.x + boundary.width && x + SIZE > boundary.x && y < boundary.y + boundary.height && y + SIZE > boundary.y {
+			if bounds.intersects_with_segment(&boundary.bounds()).is_some() {
 				continue 'main;
 			}
 		}

@@ -18,6 +18,7 @@ use crate::camera::{
 	worldspace_to_screenspace
 };
 
+#[derive(Clone)]
 pub struct Vec2 {
 	pub x: f64,
 	pub y: f64
@@ -33,7 +34,7 @@ pub struct Rectangle {
 pub struct Segment {
 	pub start: Vec2,
 	pub end: Vec2,
-	pub width: f64
+	pub stroke: f64
 }
 
 impl Vec2 {
@@ -63,13 +64,20 @@ impl Rectangle {
 		!(self.x > other.x + other.width || self.x + self.width < other.x || self.y > other.y + other.height || self.y + self.height < other.y)
 	}
 
-	pub fn intersects_with_segment(&self, other: &Segment) -> bool {
-		let top = Segment::new(Vec2::new(self.x, self.y), Vec2::new(self.x + self.width, self.y), 0.0);
-		let right = Segment::new(Vec2::new(self.x + self.width, self.y), Vec2::new(self.x + self.width, self.y + self.height), 0.0);
-		let bottom = Segment::new(Vec2::new(self.x + self.width, self.y + self.height), Vec2::new(self.x, self.y + self.height), 0.0);
-		let left = Segment::new(Vec2::new(self.x, self.y + self.height), Vec2::new(self.x, self.y), 0.0);
+	pub fn intersects_with_segment(&self, other: &Segment) -> Option<Segment> {
+		let segments = [
+			Segment::new(Vec2::new(self.x, self.y), Vec2::new(self.x + self.width, self.y), 0.0),
+			Segment::new(Vec2::new(self.x + self.width, self.y), Vec2::new(self.x + self.width, self.y + self.height), 0.0),
+			Segment::new(Vec2::new(self.x + self.width, self.y + self.height), Vec2::new(self.x, self.y + self.height), 0.0),
+			Segment::new(Vec2::new(self.x, self.y + self.height), Vec2::new(self.x, self.y), 0.0),
+		];
 
-		other.intersects_with_segment(&top) || other.intersects_with_segment(&right) || other.intersects_with_segment(&bottom) || other.intersects_with_segment(&left)
+		for segment in segments {
+			if other.intersects_with_segment(&segment).is_some() {
+				return Some(segment);
+			}
+		}
+		None
 	}
 }
 
@@ -79,7 +87,7 @@ impl Segment {
 		Self {
 			start,
 			end,
-			width
+			stroke: width
 		}
 	}
 
@@ -95,33 +103,62 @@ impl Segment {
 		Vec2::new(-dy / length, dx / length)
 	}
 
-	pub fn intersects_with_segment(&self, other: &Segment) -> bool {
+	pub fn intersects_with_segment(&self, other: &Segment) -> Option<Segment> {
 		let normal = self.get_normal();
-		let self_top = Segment::new(
-			Vec2::new(self.start.x - self.width / 2.0 * normal.x, self.start.y - self.width / 2.0 * normal.y),
-			Vec2::new(self.end.x - self.width / 2.0 * normal.x, self.end.y - self.width / 2.0 * normal.y),
-			0.0
-		);
-		let self_bottom = Segment::new(
-			Vec2::new(self.start.x + self.width / 2.0 * normal.x, self.start.y + self.width / 2.0 * normal.y),
-			Vec2::new(self.end.x + self.width / 2.0 * normal.x, self.end.y + self.width / 2.0 * normal.y),
-			0.0
-		);
-		let other_top = Segment::new(
-			Vec2::new(other.start.x - other.width / 2.0 * normal.x, other.start.y - other.width / 2.0 * normal.y),
-			Vec2::new(other.end.x - other.width / 2.0 * normal.x, other.end.y - other.width / 2.0 * normal.y),
-			0.0
-		);
-		let other_bottom = Segment::new(
-			Vec2::new(other.start.x + other.width / 2.0 * normal.x, other.start.y + other.width / 2.0 * normal.y),
-			Vec2::new(other.end.x + other.width / 2.0 * normal.x, other.end.y + other.width / 2.0 * normal.y),
-			0.0
-		);
+		let self_sides = [
+			Segment::new(
+				Vec2::new(self.start.x - self.stroke / 2.0 * normal.x, self.start.y - self.stroke / 2.0 * normal.y),
+				Vec2::new(self.end.x - self.stroke / 2.0 * normal.x, self.end.y - self.stroke / 2.0 * normal.y),
+				0.0
+			),
+			Segment::new(
+				Vec2::new(self.start.x + self.stroke / 2.0 * normal.x, self.start.y + self.stroke / 2.0 * normal.y),
+				Vec2::new(self.end.x + self.stroke / 2.0 * normal.x, self.end.y + self.stroke / 2.0 * normal.y),
+				0.0
+			),
+			Segment::new(
+				Vec2::new(self.start.x - self.stroke / 2.0 * normal.x, self.start.y - self.stroke / 2.0 * normal.y),
+				Vec2::new(self.start.x + self.stroke / 2.0 * normal.x, self.start.y + self.stroke / 2.0 * normal.y),
+				0.0
+			),
+			Segment::new(
+				Vec2::new(self.end.x - self.stroke / 2.0 * normal.x, self.end.y - self.stroke / 2.0 * normal.y),
+				Vec2::new(self.end.x + self.stroke / 2.0 * normal.x, self.end.y + self.stroke / 2.0 * normal.y),
+				0.0
+			),
+		];
+		let other_sides = [
+			Segment::new(
+				Vec2::new(other.start.x - other.stroke / 2.0 * normal.x, other.start.y - other.stroke / 2.0 * normal.y),
+				Vec2::new(other.end.x - other.stroke / 2.0 * normal.x, other.end.y - other.stroke / 2.0 * normal.y),
+				0.0
+			),
+			Segment::new(
+				Vec2::new(other.start.x + other.stroke / 2.0 * normal.x, other.start.y + other.stroke / 2.0 * normal.y),
+				Vec2::new(other.end.x + other.stroke / 2.0 * normal.x, other.end.y + other.stroke / 2.0 * normal.y),
+				0.0
+			),
+			Segment::new(
+				Vec2::new(other.start.x - other.stroke / 2.0 * normal.x, other.start.y - other.stroke / 2.0 * normal.y),
+				Vec2::new(other.start.x + other.stroke / 2.0 * normal.x, other.start.y + other.stroke / 2.0 * normal.y),
+				0.0
+			),
+			Segment::new(
+				Vec2::new(other.end.x - other.stroke / 2.0 * normal.x, other.end.y - other.stroke / 2.0 * normal.y),
+				Vec2::new(other.end.x + other.stroke / 2.0 * normal.x, other.end.y + other.stroke / 2.0 * normal.y),
+				0.0
+			),
+		];
 
-		self_top.intersects_without_thickness(&other_top)
-			|| self_top.intersects_without_thickness(&other_bottom)
-			|| self_bottom.intersects_without_thickness(&other_top)
-			|| self_bottom.intersects_without_thickness(&other_bottom)
+		for other_side in other_sides {
+			for self_side in self_sides.iter() {
+				if self_side.intersects_without_thickness(&other_side) {
+					return Some(other_side);
+				}
+			}
+		}
+
+		None
 	}
 
 	pub fn intersects_with_rect(&self, other: &Rectangle) -> bool {
@@ -130,7 +167,7 @@ impl Segment {
 		let bottom = Segment::new(Vec2::new(other.x + other.width, other.y + other.height), Vec2::new(other.x, other.y + other.height), 0.0);
 		let left = Segment::new(Vec2::new(other.x, other.y + other.height), Vec2::new(other.x, other.y), 0.0);
 
-		self.intersects_with_segment(&top) || self.intersects_with_segment(&right) || self.intersects_with_segment(&bottom) || self.intersects_with_segment(&left)
+		self.intersects_with_segment(&top).is_some() || self.intersects_with_segment(&right).is_some() || self.intersects_with_segment(&bottom).is_some() || self.intersects_with_segment(&left).is_some()
 	}
 
 	fn intersects_without_thickness(&self, other: &Segment) -> bool {
@@ -145,7 +182,7 @@ impl Segment {
 		let angle = if self.end.x - self.start.x < 0.0 { temp_angle + 180.0 } else { temp_angle };
 
 		let width = (self.length() * WORLD_TO_PIXELS) as u32;
-		let height = (self.width * WORLD_TO_PIXELS) as u32;
+		let height = (self.stroke * WORLD_TO_PIXELS) as u32;
 
 		let mut surface = Surface::new(width, height, PixelFormatEnum::RGB24)?;
 		surface.fill_rect(Rect::new(0, 0, width, height), color)?;
@@ -160,13 +197,14 @@ impl Segment {
 			canvas.copy_ex(
 				&texture,
 				None,
-				Some(Rect::new(x, y - (self.width / 2.0 * WORLD_TO_PIXELS) as i32, width, height)),
+				Some(Rect::new(x, y - (self.stroke / 2.0 * WORLD_TO_PIXELS) as i32, width, height)),
 				angle,
-				Some(Point::new(0, (self.width / 2.0 * WORLD_TO_PIXELS) as i32)),
+				Some(Point::new(0, (self.stroke / 2.0 * WORLD_TO_PIXELS) as i32)),
 				false,
 				false
 			)?;
-		} else { }
+		} else {
+		}
 
 		Ok(())
 	}

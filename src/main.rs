@@ -48,12 +48,12 @@ use shapes::*;
 
 enum VerticalDirection {
 	Up,
-	Down,
+	Down
 }
 
 enum HorizontalDirection {
 	Left,
-	Right,
+	Right
 }
 
 enum GameEvent {
@@ -65,7 +65,7 @@ enum GameEvent {
 	FortCreation(Fort),
 	FortHit(String, usize),
 	FortConnectionCreation(usize, Vec2),
-	CurrFortChanged(usize),
+	CurrFortChanged(usize)
 }
 
 fn main() -> Result<(), String> {
@@ -84,11 +84,12 @@ fn main() -> Result<(), String> {
 	let network = prompt_for_network();
 
 	let boundaries = vec![
-		Boundary::new(-54.0, -54.0, 108.0, 4.0),
-		Boundary::new(50.0, -54.0, 4.0, 108.0),
-		Boundary::new(-54.0, -54.0, 4.0, 108.0),
-		Boundary::new(-54.0, 50.0, 108.0, 4.0),
-		Boundary::new(-10.0, -10.0, 20.0, 20.0),
+		Boundary::new(Vec2::new(-52.0, -50.0), Vec2::new(52.0, -50.0), 4.0, Color::RGB(60, 60, 60)),
+		Boundary::new(Vec2::new(50.0, -52.0), Vec2::new(50.0, 52.0), 4.0, Color::RGB(60, 60, 60)),
+		Boundary::new(Vec2::new(52.0, 50.0), Vec2::new(-52.0, 50.0), 4.0, Color::RGB(60, 60, 60)),
+		Boundary::new(Vec2::new(-50.0, 52.0), Vec2::new(-50.0, -52.0), 4.0, Color::RGB(60, 60, 60)),
+		Boundary::new(Vec2::new(-10.0, 0.0), Vec2::new(10.0, 0.0), 20.0, Color::RGB(60, 60, 60)),
+		Boundary::new(Vec2::new(-30.0, -30.0), Vec2::new(20.0, -10.0), 2.0, Color::RGB(120, 120, 120)),
 	];
 	let spawn = helicopter::find_valid_spawn(&boundaries);
 	let heli_mutex = Arc::new(Mutex::new(Helicopter::new(spawn.0, spawn.1)));
@@ -168,7 +169,7 @@ fn main() -> Result<(), String> {
 			let mut closest_fort_index = 0;
 			for (index, fort) in forts.iter().enumerate() {
 				let distance = (new_fort.y - fort.y) * (new_fort.y - fort.y) + (new_fort.x - fort.x) * (new_fort.x - fort.x);
-				if distance < min_distance { 
+				if distance < min_distance {
 					min_distance = distance;
 					closest_fort_index = index;
 				}
@@ -187,24 +188,26 @@ fn main() -> Result<(), String> {
 					(false, false) => {
 						game_events.push(GameEvent::FortConnectionCreation(curr_fort_index, Vec2::new(new_fort.x, new_fort.y)));
 						game_events.push(GameEvent::FortCreation(new_fort));
-					},
+					}
 					(true, false) => game_events.push(GameEvent::FortCreation(new_fort)),
-					(false, true) => if curr_fort_index != closest_fort_index {
-						if !closest_fort.connections.contains(&(curr_fort.x, curr_fort.y)) && !curr_fort.connections.contains(&(closest_fort.x, closest_fort.y)){
-							game_events.push(GameEvent::FortConnectionCreation(curr_fort_index, Vec2::new(closest_fort.x, closest_fort.y)));
+					(false, true) => {
+						if curr_fort_index != closest_fort_index {
+							if !closest_fort.connections.contains(&(curr_fort.x, curr_fort.y)) && !curr_fort.connections.contains(&(closest_fort.x, closest_fort.y)) {
+								game_events.push(GameEvent::FortConnectionCreation(curr_fort_index, Vec2::new(closest_fort.x, closest_fort.y)));
+							}
+							game_events.push(GameEvent::CurrFortChanged(closest_fort_index));
 						}
-						game_events.push(GameEvent::CurrFortChanged(closest_fort_index));
-					},
-					(true, true) => game_events.push(GameEvent::CurrFortChanged(closest_fort_index)),
+					}
+					(true, true) => game_events.push(GameEvent::CurrFortChanged(closest_fort_index))
 				}
 			}
 		}
 
 		for (bullet_ip, bullets) in network.bullets.iter() {
 			for (bullet_index, bullet) in bullets.lock().expect("Failed to acquire lock on bullets").iter().enumerate() {
-				// TODO, Potential issue, if sending bullet lags a lot, lifetime & physics would be
-				// behind which is desync. Maybe instead of simulating, we could send with a
-				// timestamp? Need to research
+				// TODO, Potential issue, if sending bullet lags a lot, lifetime & physics would
+				// be behind which is desync. Maybe instead of simulating, we could send
+				// with a timestamp? Need to research
 				if bullet.age >= bullet::LIFESPAN {
 					game_events.push(GameEvent::BulletDestruction(bullet_ip.clone(), bullet_index));
 				}
@@ -216,9 +219,18 @@ fn main() -> Result<(), String> {
 					continue;
 				}
 
+				for boundary in boundaries.iter() {
+					let boundary_segment = boundary.bounds();
+					if let Some(segment) = bullet.bounds().intersects_with_segment(&boundary_segment) {
+						game_events.push(GameEvent::BulletReflection(bullet_ip.clone(), bullet_index, segment));
+					}
+				}
+
 				for (fort_ip, forts) in network.forts.iter() {
 					for (fort_index, fort) in forts.lock().expect("Failed to acquire lock on forts").iter().enumerate() {
-						if fort_ip == bullet_ip { continue; }
+						if fort_ip == bullet_ip {
+							continue;
+						}
 
 						if fort.bounds().intersects_with_rect(&bullet.bounds()) {
 							game_events.push(GameEvent::FortHit(fort_ip.clone(), fort_index));
@@ -228,9 +240,13 @@ fn main() -> Result<(), String> {
 						}
 
 						for connection in fort.connections.iter() {
-							let wall_segment = Segment::new(Vec2::new(fort.x + fort::SIZE / 2.0, fort.y + fort::SIZE / 2.0), Vec2::new(connection.0 + fort::SIZE / 2.0, connection.1 + fort::SIZE / 2.0), fort::CONNECTION_HEIGHT);
-							if bullet.bounds().intersects_with_segment(&wall_segment) {
-								game_events.push(GameEvent::BulletReflection(bullet_ip.clone(), bullet_index, wall_segment));
+							let wall_segment = Segment::new(
+								Vec2::new(fort.x + fort::SIZE / 2.0, fort.y + fort::SIZE / 2.0),
+								Vec2::new(connection.0 + fort::SIZE / 2.0, connection.1 + fort::SIZE / 2.0),
+								fort::CONNECTION_HEIGHT
+							);
+							if let Some(segment) = bullet.bounds().intersects_with_segment(&wall_segment) {
+								game_events.push(GameEvent::BulletReflection(bullet_ip.clone(), bullet_index, segment));
 							}
 						}
 					}
@@ -248,13 +264,13 @@ fn main() -> Result<(), String> {
 					match vertical {
 						Some(VerticalDirection::Up) => heli.dy = -helicopter::SPEED,
 						Some(VerticalDirection::Down) => heli.dy = helicopter::SPEED,
-						None => heli.dy = 0.0,
+						None => heli.dy = 0.0
 					}
 
 					match horizontal {
 						Some(HorizontalDirection::Left) => heli.dx = -helicopter::SPEED,
 						Some(HorizontalDirection::Right) => heli.dx = helicopter::SPEED,
-						None => heli.dx = 0.0,
+						None => heli.dx = 0.0
 					}
 
 					if vertical.is_some() && horizontal.is_some() {
@@ -262,36 +278,29 @@ fn main() -> Result<(), String> {
 						heli.dy /= 2.0_f64.sqrt();
 					}
 
-					// TODO
 					let mut delta_x = heli.dx * delta_time;
 					let mut delta_y = heli.dy * delta_time;
+					let mut next_heli_bounds = Rectangle::new(heli.x + delta_x, heli.y + delta_y, helicopter::SIZE, helicopter::SIZE);
 					for boundary in boundaries.iter() {
-						if !(heli.x + delta_x >= boundary.x + boundary.width || heli.x + delta_x + helicopter::SIZE <= boundary.x || heli.y >= boundary.y + boundary.height || heli.y + helicopter::SIZE <= boundary.y) {
-							if heli.x >= boundary.x + boundary.width {
-								delta_x = boundary.x + boundary.width - heli.x;
-							} else {
-								delta_x = boundary.x - helicopter::SIZE - heli.x;
-							}
-							heli.dx = 0.0;
+						let boundary_bounds = boundary.bounds();
+						let mut percent = 0.00;
+						while next_heli_bounds.intersects_with_segment(&boundary_bounds).is_some() {
+							percent += 0.01;
+							next_heli_bounds.x -= delta_x * percent;
+							next_heli_bounds.y -= delta_y * percent;
 						}
 
-						if !(heli.x >= boundary.x + boundary.width || heli.x + helicopter::SIZE <= boundary.x || heli.y + delta_y >= boundary.y + boundary.height || heli.y + delta_y + helicopter::SIZE <= boundary.y) {
-							if heli.y >= boundary.y + boundary.height {
-								delta_y = boundary.y + boundary.height - heli.y;
-							} else {
-								delta_y = boundary.y - helicopter::SIZE - heli.y;
-							}
-							heli.dy = 0.0;
-						}
+						delta_x *= 1.0 - percent;
+						delta_y *= 1.0 - percent;
 					}
 
-					heli.x += delta_x;
-					heli.y += delta_y;
+					heli.x = next_heli_bounds.x;
+					heli.y = next_heli_bounds.y;
 
 					if delta_x != prev_dx * delta_time || delta_y != prev_dy * delta_time {
 						network.send_pos(&heli);
 					}
-				},
+				}
 				GameEvent::PlayerDeath => {
 					let spawn = helicopter::find_valid_spawn(&boundaries);
 
@@ -301,17 +310,17 @@ fn main() -> Result<(), String> {
 					network.send_death();
 					network.send_pos(&heli);
 					death_timer = Duration::from_secs(5);
-				},
+				}
 				GameEvent::BulletCreation(bullet) => {
 					network.send_bullet(&bullet);
 					let mut bullets = network.bullets.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on bullets");
 					bullets.push(bullet);
 					shoot_cooldown = Duration::from_millis(250);
-				},
+				}
 				GameEvent::BulletDestruction(ip, index) => {
 					let mut bullets = network.bullets.get(&ip).unwrap().lock().expect("Failed to acquire lock on bullets");
 					_ = bullets.remove(index);
-				},
+				}
 				GameEvent::BulletReflection(ip, index, segment) => {
 					// TODO, figure out if this should be network message or computed locally
 					let mut bullets = network.bullets.get(&ip).unwrap().lock().expect("Failed to acquire lock on bullets");
@@ -331,26 +340,28 @@ fn main() -> Result<(), String> {
 
 					bullet.dx = final_x;
 					bullet.dy = final_y;
-				},
+				}
 				GameEvent::FortCreation(fort) => {
 					network.send_fort(&fort);
 					let mut forts = network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on network");
 					forts.push(fort);
 					curr_fort_index = forts.len() - 1;
-				},
+				}
 				GameEvent::FortHit(ip, index) => {
 					let mut forts = network.forts.get(&ip).unwrap().lock().expect("Failed to acquire lock on network");
 					let fort = forts.get_mut(index).unwrap();
-					
+
 					fort.health -= 1;
 
 					if fort.health == 0 {
 						let removed_fort = forts.remove(index);
 						forts.iter_mut().for_each(|fort| fort.connections.retain(|connection| connection != &(removed_fort.x, removed_fort.y)));
 
-						if curr_fort_index != 0 { curr_fort_index -= 1; }
+						if curr_fort_index != 0 {
+							curr_fort_index -= 1;
+						}
 					}
-				},
+				}
 				GameEvent::FortConnectionCreation(index, end) => {
 					let mut forts = network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on network");
 					let fort = forts.get_mut(index).unwrap();
@@ -360,8 +371,8 @@ fn main() -> Result<(), String> {
 					drop(forts);
 
 					network.send_fort_connection(connection);
-				},
-				GameEvent::CurrFortChanged(index) => curr_fort_index = index,
+				}
+				GameEvent::CurrFortChanged(index) => curr_fort_index = index
 			}
 		}
 
@@ -372,7 +383,9 @@ fn main() -> Result<(), String> {
 		}
 
 		for (ip, heli) in network.helis.iter() {
-			if ip == &network.ip { continue; }
+			if ip == &network.ip {
+				continue;
+			}
 			let delta_time = delta_time.as_millis() as f64 / 1000.0;
 			let mut heli = heli.lock().expect("Failed to acquire lock on heli");
 
@@ -420,7 +433,19 @@ fn main() -> Result<(), String> {
 			for (ip, heli) in network.helis.iter() {
 				println!("HELI ON {}: {:?}", ip, heli.lock().expect("Failed to acquire lock on heli"));
 			}
-			println!("TOTAL CONNECTIONS: {}", network.forts.get(&network.ip).unwrap().lock().expect("Failed to acquire lock on forts").iter().map(|fort| fort.connections.len()).reduce(|a, b| a + b).unwrap());
+			println!(
+				"TOTAL CONNECTIONS: {}",
+				network
+					.forts
+					.get(&network.ip)
+					.unwrap()
+					.lock()
+					.expect("Failed to acquire lock on forts")
+					.iter()
+					.map(|fort| fort.connections.len())
+					.reduce(|a, b| a + b)
+					.unwrap()
+			);
 			println!("DEATH TIMER: {:?}", death_timer);
 			keyboard.is_p_down = false;
 		}
